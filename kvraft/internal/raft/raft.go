@@ -32,15 +32,15 @@ const (
 
 // LogEntry is one replicated command.
 type LogEntry struct {
-	Term  uint64
-	Index uint64
+	Term  int
+	Index int
 	Data  []byte
 }
 
 // ApplyMsg is sent on the apply channel after an entry is committed.
 type ApplyMsg struct {
-	Index uint64
-	Term  uint64
+	Index int
+	Term  int
 	Data  []byte
 }
 
@@ -48,26 +48,27 @@ type ApplyMsg struct {
 type Raft struct {
 	mu sync.Mutex
 
-	id    uint32
-	peers map[uint32]string
-	wal   *wal.WAL
+	id     int
+	peers  []string // indexed by id, index 0 is unused
+	quorum int
+	wal    *wal.WAL
 
 	// Persistent state.
-	currentTerm uint64
-	votedFor    uint32 // 0 means no vote yet
+	currentTerm int
+	votedFor    int // 0 means no vote yet
 	log         []LogEntry
 
 	// Volatile state.
-	commitIndex uint64
-	lastApplied uint64
-	syncedIndex uint64 // last index known to be on disk
+	commitIndex int
+	lastApplied int
+	syncedIndex int // last index known to be on disk
 
 	// Leader state, rebuilt after every election.
-	nextIndex  map[uint32]uint64
-	matchIndex map[uint32]uint64
+	nextIndex  []int
+	matchIndex []int
 
 	state    state
-	leaderID uint32
+	leaderID int
 
 	applyCh chan ApplyMsg
 
@@ -82,15 +83,23 @@ type Raft struct {
 
 // New creates a raft node, recovering any log and term already on disk.
 // Committed entries are sent on applyCh in order.
-func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) *Raft {
+func New(id int, peers []string, w *wal.WAL, applyCh chan ApplyMsg) *Raft {
+	count := 0
+	for i := 1; i < len(peers); i++ {
+		if peers[i] != "" {
+			count++
+		}
+	}
+
 	rf := &Raft{
 		id:          id,
 		peers:       peers,
+		quorum:      count/2 + 1,
 		wal:         w,
 		log:         []LogEntry{{Term: 0, Index: 0}},
 		applyCh:     applyCh,
-		nextIndex:   make(map[uint32]uint64),
-		matchIndex:  make(map[uint32]uint64),
+		nextIndex:   make([]int, len(peers)),
+		matchIndex:  make([]int, len(peers)),
 		state:       follower,
 		lastContact: time.Now(),
 		conns:       make(map[string]raftpb.RaftClient),
@@ -124,7 +133,7 @@ func (rf *Raft) ticker() {
 
 // Propose adds a command to the log. It returns the index and term the
 // command was assigned, and whether this node is the leader.
-func (rf *Raft) Propose(cmd []byte) (uint64, uint64, bool) {
+func (rf *Raft) Propose(cmd []byte) (int, int, bool) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -133,7 +142,7 @@ func (rf *Raft) Propose(cmd []byte) (uint64, uint64, bool) {
 	}
 	entry := LogEntry{Term: rf.currentTerm, Index: rf.lastIndex() + 1, Data: cmd}
 	rf.log = append(rf.log, entry)
-	if err := rf.wal.Append([]wal.Entry{{Term: entry.Term, Index: entry.Index, Data: entry.Data}}); err != nil {
+	if err := rf.wal.Append([]wal.Entry{{Term: uint64(entry.Term), Index: uint64(entry.Index), Data: entry.Data}}); err != nil {
 		log.Printf("raft %d: wal append: %v", rf.id, err)
 	}
 	return entry.Index, entry.Term, true
@@ -160,7 +169,7 @@ func (rf *Raft) syncWAL() {
 }
 
 // LeaderID returns the id of the current leader, if known.
-func (rf *Raft) LeaderID() uint32 {
+func (rf *Raft) LeaderID() int {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	return rf.leaderID
@@ -187,13 +196,13 @@ func randomElectionTimeout() time.Duration {
 }
 
 // lastIndex is the index of the newest log entry. The caller must hold rf.mu.
-func (rf *Raft) lastIndex() uint64 {
+func (rf *Raft) lastIndex() int {
 	return rf.log[len(rf.log)-1].Index
 }
 
 // lastLogInfo returns the index and term of the newest log entry.
 // The caller must hold rf.mu.
-func (rf *Raft) lastLogInfo() (uint64, uint64) {
+func (rf *Raft) lastLogInfo() (int, int) {
 	last := rf.log[len(rf.log)-1]
 	return last.Index, last.Term
 }
@@ -216,7 +225,7 @@ func (rf *Raft) applyCommitted() {
 
 // becomeFollower steps down to follower at the given term. The caller must
 // hold rf.mu.
-func (rf *Raft) becomeFollower(term uint64) {
+func (rf *Raft) becomeFollower(term int) {
 	rf.state = follower
 	rf.currentTerm = term
 	rf.votedFor = 0
@@ -229,9 +238,8 @@ func (rf *Raft) becomeFollower(term uint64) {
 func (rf *Raft) becomeLeader() {
 	rf.state = leader
 	rf.leaderID = rf.id
-	next := rf.lastIndex() + 1
 	for id := range rf.peers {
-		rf.nextIndex[id] = next
+		rf.nextIndex[id] = rf.lastIndex() + 1
 		rf.matchIndex[id] = 0
 	}
 
@@ -239,12 +247,12 @@ func (rf *Raft) becomeLeader() {
 	// over from earlier terms, so the store is rebuilt after a restart.
 	entry := LogEntry{Term: rf.currentTerm, Index: rf.lastIndex() + 1}
 	rf.log = append(rf.log, entry)
-	if err := rf.appendToWAL([]wal.Entry{{Term: entry.Term, Index: entry.Index}}); err != nil {
+	if err := rf.appendToWAL([]wal.Entry{{Term: uint64(entry.Term), Index: uint64(entry.Index)}}); err != nil {
 		log.Printf("raft %d: wal append noop: %v", rf.id, err)
 	}
 
 	for id, addr := range rf.peers {
-		if id == rf.id {
+		if id == 0 || id == rf.id {
 			continue
 		}
 		go rf.peerLoop(id, addr, rf.currentTerm)

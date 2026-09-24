@@ -29,17 +29,17 @@ func (rf *Raft) startElection() {
 	)
 
 	for id, addr := range rf.peers {
-		if id == rf.id {
+		if id == 0 || id == rf.id {
 			continue
 		}
 		wg.Add(1)
-		go func(id uint32, addr string) {
+		go func(addr string) {
 			defer wg.Done()
 			req := &raftpb.RequestVoteRequest{
-				Term:         term,
-				CandidateId:  rf.id,
-				LastLogIndex: lastIndex,
-				LastLogTerm:  lastTerm,
+				Term:         uint64(term),
+				CandidateId:  uint32(rf.id),
+				LastLogIndex: uint64(lastIndex),
+				LastLogTerm:  uint64(lastTerm),
 			}
 			resp, err := rf.sendRequestVote(addr, req)
 			if err != nil {
@@ -47,9 +47,9 @@ func (rf *Raft) startElection() {
 			}
 
 			rf.mu.Lock()
-			if resp.Term > rf.currentTerm {
+			if int(resp.Term) > rf.currentTerm {
 				// A higher term means we are out of date.
-				rf.becomeFollower(resp.Term)
+				rf.becomeFollower(int(resp.Term))
 				rf.mu.Unlock()
 				return
 			}
@@ -61,7 +61,7 @@ func (rf *Raft) startElection() {
 
 			voteMu.Lock()
 			votes++
-			won := votes > len(rf.peers)/2
+			won := votes >= rf.quorum
 			voteMu.Unlock()
 			if won {
 				rf.mu.Lock()
@@ -70,7 +70,7 @@ func (rf *Raft) startElection() {
 				}
 				rf.mu.Unlock()
 			}
-		}(id, addr)
+		}(addr)
 	}
 }
 
@@ -79,24 +79,24 @@ func (rf *Raft) HandleRequestVote(req *raftpb.RequestVoteRequest) *raftpb.Reques
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	if req.Term < rf.currentTerm {
-		return &raftpb.RequestVoteResponse{Term: rf.currentTerm, VoteGranted: false}
+	if int(req.Term) < rf.currentTerm {
+		return &raftpb.RequestVoteResponse{Term: uint64(rf.currentTerm), VoteGranted: false}
 	}
-	if req.Term > rf.currentTerm {
-		rf.becomeFollower(req.Term)
+	if int(req.Term) > rf.currentTerm {
+		rf.becomeFollower(int(req.Term))
 	}
 
 	lastIndex, lastTerm := rf.lastLogInfo()
-	upToDate := req.LastLogTerm > lastTerm ||
-		(req.LastLogTerm == lastTerm && req.LastLogIndex >= lastIndex)
+	upToDate := int(req.LastLogTerm) > lastTerm ||
+		(int(req.LastLogTerm) == lastTerm && int(req.LastLogIndex) >= lastIndex)
 
 	granted := false
-	if (rf.votedFor == 0 || rf.votedFor == req.CandidateId) && upToDate {
-		rf.votedFor = req.CandidateId
+	if (rf.votedFor == 0 || rf.votedFor == int(req.CandidateId)) && upToDate {
+		rf.votedFor = int(req.CandidateId)
 		rf.resetElectionTimer()
 		rf.persistState()
 		granted = true
 	}
 
-	return &raftpb.RequestVoteResponse{Term: rf.currentTerm, VoteGranted: granted}
+	return &raftpb.RequestVoteResponse{Term: uint64(rf.currentTerm), VoteGranted: granted}
 }

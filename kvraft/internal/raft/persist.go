@@ -9,8 +9,8 @@ import (
 
 // persistedState is the part of raft state that must survive a restart.
 type persistedState struct {
-	CurrentTerm uint64 `json:"current_term"`
-	VotedFor    uint32 `json:"voted_for"`
+	CurrentTerm int `json:"current_term"`
+	VotedFor    int `json:"voted_for"`
 }
 
 // statePath is where the term and vote are stored, next to the WAL.
@@ -41,10 +41,10 @@ func (rf *Raft) recover() {
 	for _, e := range entries {
 		// A later record at the same index replaces an older one, which is
 		// how a follower that overwrote a suffix is replayed.
-		if e.Index < uint64(len(rf.log)) {
+		if int(e.Index) < len(rf.log) {
 			rf.log = rf.log[:e.Index]
 		}
-		rf.log = append(rf.log, LogEntry{Term: e.Term, Index: e.Index, Data: e.Data})
+		rf.log = append(rf.log, LogEntry{Term: int(e.Term), Index: int(e.Index), Data: e.Data})
 	}
 	rf.syncedIndex = rf.lastIndex()
 }

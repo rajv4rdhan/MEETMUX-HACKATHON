@@ -10,23 +10,23 @@ import (
 
 // Peer is one other node: where to reach its raft server and its RESP server.
 type Peer struct {
-	ID       uint32
+	ID       int
 	RaftAddr string
 	RespAddr string
 }
 
 // Config holds everything one node needs to start.
 type Config struct {
-	ID       uint32
+	ID       int
 	RespAddr string
 	RaftAddr string
 	DataDir  string
-	Peers    map[uint32]Peer
+	Peers    []Peer // indexed by id, index 0 is unused
 }
 
 // Load reads the node settings from the command line.
 func Load() (Config, error) {
-	id := flag.Uint("id", 1, "node id (1-3)")
+	id := flag.Int("id", 1, "node id (1-3)")
 	respAddr := flag.String("resp", ":6380", "address for the RESP server")
 	raftAddr := flag.String("raft", ":5001", "address for the raft gRPC server")
 	dataDir := flag.String("data", "data", "directory for the write-ahead log")
@@ -39,7 +39,7 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		ID:       uint32(*id),
+		ID:       *id,
 		RespAddr: *respAddr,
 		RaftAddr: *raftAddr,
 		DataDir:  *dataDir,
@@ -47,9 +47,10 @@ func Load() (Config, error) {
 	}, nil
 }
 
-// parsePeers turns "1=host:raftport:respport" into a map of id to Peer.
-func parsePeers(s string) (map[uint32]Peer, error) {
-	peers := make(map[uint32]Peer)
+// parsePeers turns "1=host:raftport:respport" into a slice indexed by id.
+func parsePeers(s string) ([]Peer, error) {
+	var parsed []Peer
+	maxID := 0
 	for _, part := range strings.Split(s, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
@@ -59,7 +60,7 @@ func parsePeers(s string) (map[uint32]Peer, error) {
 		if !ok {
 			return nil, fmt.Errorf("bad peer %q, want id=host:raftport:respport", part)
 		}
-		id, err := strconv.ParseUint(idStr, 10, 32)
+		id, err := strconv.Atoi(idStr)
 		if err != nil {
 			return nil, fmt.Errorf("bad peer id %q: %w", idStr, err)
 		}
@@ -67,11 +68,19 @@ func parsePeers(s string) (map[uint32]Peer, error) {
 		if len(fields) != 3 {
 			return nil, fmt.Errorf("bad peer %q, want id=host:raftport:respport", part)
 		}
-		peers[uint32(id)] = Peer{
-			ID:       uint32(id),
+		parsed = append(parsed, Peer{
+			ID:       id,
 			RaftAddr: fields[0] + ":" + fields[1],
 			RespAddr: fields[0] + ":" + fields[2],
+		})
+		if id > maxID {
+			maxID = id
 		}
+	}
+
+	peers := make([]Peer, maxID+1)
+	for _, p := range parsed {
+		peers[p.ID] = p
 	}
 	return peers, nil
 }

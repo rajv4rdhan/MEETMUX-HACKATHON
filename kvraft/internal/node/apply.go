@@ -48,7 +48,7 @@ func (n *Node) applyCommand(cmd Command) {
 // waitApplied waits until the entry at index has been applied. It reports
 // whether the applied entry still has the expected term, which is false if a
 // different leader overwrote it.
-func (n *Node) waitApplied(index, term uint64) bool {
+func (n *Node) waitApplied(index, term int) bool {
 	for i := 0; i < 2000; i++ {
 		n.mu.Lock()
 		if n.lastApplied >= index {

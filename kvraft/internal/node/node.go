@@ -28,8 +28,8 @@ type Node struct {
 	// appliedTerm remembers the term of recent applied indexes so a client
 	// can tell whether its write survived.
 	mu           sync.Mutex
-	lastApplied  uint64
-	appliedTerm  map[uint64]uint64
+	lastApplied  int
+	appliedTerm  map[int]int
 	appliedCount int
 
 	// One open connection to the leader, used to forward writes.
@@ -54,10 +54,10 @@ func New(cfg config.Config) (*Node, error) {
 		store:       store.New(),
 		wal:         w,
 		applyCh:     make(chan raft.ApplyMsg, 256),
-		appliedTerm: make(map[uint64]uint64),
+		appliedTerm: make(map[int]int),
 	}
 
-	raftPeers := make(map[uint32]string, len(cfg.Peers))
+	raftPeers := make([]string, len(cfg.Peers))
 	for id, peer := range cfg.Peers {
 		raftPeers[id] = peer.RaftAddr
 	}

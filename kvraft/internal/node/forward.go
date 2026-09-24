@@ -13,8 +13,11 @@ import (
 // forward sends the raw RESP command to the leader and returns its reply.
 func (n *Node) forward(args []string) (resp.Reply, bool) {
 	leaderID := n.raft.LeaderID()
-	peer, ok := n.cfg.Peers[leaderID]
-	if !ok || peer.RespAddr == "" {
+	if leaderID <= 0 || leaderID >= len(n.cfg.Peers) {
+		return nil, false
+	}
+	peer := n.cfg.Peers[leaderID]
+	if peer.RespAddr == "" {
 		return nil, false
 	}
 
