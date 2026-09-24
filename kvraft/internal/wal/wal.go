@@ -62,29 +62,6 @@ func (w *WAL) Sync() error {
 	return w.f.Sync()
 }
 
-// Rewrite replaces the whole log with entries. It is used when a conflicting
-// suffix is removed from the log, since an append-only file cannot truncate.
-func (w *WAL) Rewrite(entries []Entry) error {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if err := w.f.Truncate(0); err != nil {
-		return err
-	}
-	if _, err := w.f.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	w.w.Reset(w.f)
-	for _, e := range entries {
-		if _, err := w.w.Write(encodeRecord(e.Term, e.Index, e.Data)); err != nil {
-			return err
-		}
-	}
-	if err := w.w.Flush(); err != nil {
-		return err
-	}
-	return w.f.Sync()
-}
-
 // ReadAll reads every valid record from the start of the file. It stops at
 // the first damaged record, because a crash can leave a half-written tail.
 func (w *WAL) ReadAll() ([]Entry, error) {

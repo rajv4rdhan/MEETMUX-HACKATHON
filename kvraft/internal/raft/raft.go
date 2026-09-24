@@ -107,16 +107,16 @@ func (rf *Raft) Start() {
 	go rf.ticker()
 }
 
-// ticker syncs the log on the leader and watches for election timeouts.
+// ticker syncs the log, watches for election timeouts and applies commits.
 func (rf *Raft) ticker() {
 	for {
+		rf.syncWAL()
+
 		rf.mu.Lock()
 		isLeader := rf.state == leader
 		rf.mu.Unlock()
 
-		if isLeader {
-			rf.syncWAL()
-		} else if rf.electionTimedOut() {
+		if !isLeader && rf.electionTimedOut() {
 			rf.startElection()
 		}
 		rf.applyCommitted()

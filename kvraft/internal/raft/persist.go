@@ -39,11 +39,14 @@ func (rf *Raft) recover() {
 		log.Printf("raft %d: reading wal: %v", rf.id, err)
 	}
 	for _, e := range entries {
+		// A later record at the same index replaces an older one, which is
+		// how a follower that overwrote a suffix is replayed.
+		if e.Index < uint64(len(rf.log)) {
+			rf.log = rf.log[:e.Index]
+		}
 		rf.log = append(rf.log, LogEntry{Term: e.Term, Index: e.Index, Data: e.Data})
 	}
-	if rf.commitIndex > rf.lastIndex() {
-		rf.commitIndex = rf.lastIndex()
-	}
+	rf.syncedIndex = rf.lastIndex()
 }
 
 // persistState writes the term and vote so a restart cannot double-vote.

@@ -86,3 +86,54 @@ func TestCorruptedTailIsIgnored(t *testing.T) {
 		t.Fatalf("ReadAll = %+v; want only the good entry", got)
 	}
 }
+
+func TestReplayKeepsLastRecordForIndex(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.wal")
+	w, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := []Entry{
+		{Term: 1, Index: 1, Data: []byte("one")},
+		{Term: 1, Index: 2, Data: []byte("old two")},
+		{Term: 2, Index: 2, Data: []byte("new two")},
+	}
+	if err := w.Append(records); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Sync(); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	w2, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w2.Close()
+	got, err := w2.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("ReadAll returned %d records; want all 3", len(got))
+	}
+
+	// Replay the same way raft does: a later record at an index replaces the
+	// older one. Index 0 is the sentinel entry.
+	log := []Entry{{Term: 0, Index: 0}}
+	for _, e := range got {
+		if e.Index < uint64(len(log)) {
+			log = log[:e.Index]
+		}
+		log = append(log, e)
+	}
+	if len(log) != 3 {
+		t.Fatalf("replayed log has %d entries; want 3", len(log))
+	}
+	if log[2].Term != 2 || string(log[2].Data) != "new two" {
+		t.Fatalf("index 2 = %+v; want the new term", log[2])
+	}
+}

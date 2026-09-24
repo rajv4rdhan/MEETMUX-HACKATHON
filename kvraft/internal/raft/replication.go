@@ -8,15 +8,6 @@ import (
 	"kvraft/proto/raftpb"
 )
 
-// toWALEntries converts raft log entries for storage.
-func toWALEntries(entries []LogEntry) []wal.Entry {
-	out := make([]wal.Entry, 0, len(entries))
-	for _, e := range entries {
-		out = append(out, wal.Entry{Term: e.Term, Index: e.Index, Data: e.Data})
-	}
-	return out
-}
-
 // peerLoop keeps one follower in sync with this leader until the term ends.
 func (rf *Raft) peerLoop(id uint32, addr string, term uint64) {
 	for {
@@ -70,9 +61,8 @@ func (rf *Raft) peerLoop(id uint32, addr string, term uint64) {
 		}
 
 		if resp.Success {
-			match := req.PrevLogIndex + uint64(len(req.Entries))
-			if match > rf.matchIndex[id] {
-				rf.matchIndex[id] = match
+			if resp.MatchIndex > rf.matchIndex[id] {
+				rf.matchIndex[id] = resp.MatchIndex
 			}
 			if rf.matchIndex[id]+1 > rf.nextIndex[id] {
 				rf.nextIndex[id] = rf.matchIndex[id] + 1
@@ -147,8 +137,9 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		return &raftpb.AppendEntriesResponse{Term: rf.currentTerm, Success: false}
 	}
 
-	// Append the new entries, dropping any conflicting suffix first.
-	truncated := false
+	// Append the new entries, dropping any conflicting suffix first. The WAL
+	// is append-only, so a conflict just adds records; replay keeps the last
+	// record for an index.
 	var fresh []wal.Entry
 	for i, e := range req.Entries {
 		index := req.PrevLogIndex + 1 + uint64(i)
@@ -157,18 +148,11 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 				continue
 			}
 			rf.log = rf.log[:index]
-			truncated = true
 		}
 		rf.log = append(rf.log, LogEntry{Term: e.Term, Index: index, Data: e.Data})
 		fresh = append(fresh, wal.Entry{Term: e.Term, Index: index, Data: e.Data})
 	}
-
-	if truncated {
-		// The file is append-only, so a shorter log must be rewritten.
-		if err := rf.wal.Rewrite(toWALEntries(rf.log[1:])); err != nil {
-			log.Printf("raft %d: wal rewrite: %v", rf.id, err)
-		}
-	} else if err := rf.appendToWAL(fresh); err != nil {
+	if err := rf.wal.Append(fresh); err != nil {
 		log.Printf("raft %d: wal append: %v", rf.id, err)
 	}
 
@@ -182,9 +166,10 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		}
 	}
 
+	// Only count entries that are already on disk.
 	return &raftpb.AppendEntriesResponse{
 		Term:       rf.currentTerm,
 		Success:    true,
-		MatchIndex: rf.lastIndex(),
+		MatchIndex: rf.syncedIndex,
 	}
 }
