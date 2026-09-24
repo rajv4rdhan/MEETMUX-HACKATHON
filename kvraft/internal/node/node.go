@@ -71,3 +71,15 @@ func (n *Node) Run() error {
 	log.Printf("node %d listening: resp=%s raft=%s", n.cfg.ID, n.cfg.RespAddr, n.cfg.RaftAddr)
 	return n.server.ListenAndServe()
 }
+
+// Shutdown stops the RESP server and flushes the write-ahead log.
+func (n *Node) Shutdown() error {
+	var err error
+	if n.server != nil {
+		err = n.server.Close()
+	}
+	if e := n.wal.Close(); e != nil && err == nil {
+		err = e
+	}
+	return err
+}

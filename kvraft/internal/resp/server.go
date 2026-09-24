@@ -3,6 +3,7 @@ package resp
 
 import (
 	"bufio"
+	"errors"
 	"net"
 )
 
@@ -33,6 +34,9 @@ func (s *Server) ListenAndServe() error {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
 			return err
 		}
 		go s.handleConn(conn)

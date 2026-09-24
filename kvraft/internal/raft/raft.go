@@ -33,19 +33,6 @@ const (
 	leader
 )
 
-func (s state) String() string {
-	switch s {
-	case follower:
-		return "follower"
-	case candidate:
-		return "candidate"
-	case leader:
-		return "leader"
-	default:
-		return "unknown"
-	}
-}
-
 // LogEntry is one replicated command.
 type LogEntry struct {
 	Term  uint64
@@ -144,13 +131,6 @@ func (rf *Raft) ticker() {
 		}
 		time.Sleep(heartbeatInterval)
 	}
-}
-
-// IsLeader reports whether this node is currently the leader.
-func (rf *Raft) IsLeader() bool {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	return rf.state == leader
 }
 
 // LeaderAddr returns the raft address of the current leader, if known.

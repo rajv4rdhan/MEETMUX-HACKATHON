@@ -11,7 +11,6 @@ type Command struct {
 
 // Operation names used in Command.Op.
 const (
-	OpGet = "get"
 	OpSet = "set"
 	OpDel = "del"
 )
