@@ -1,0 +1,55 @@
+services:
+  node1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command:
+      - "-id=1"
+      - "-resp=:6380"
+      - "-raft=:5001"
+      - "-data=/data"
+      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+    ports:
+      - "6380:6380"
+    volumes:
+      - node1data:/data
+
+  node2:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command:
+      - "-id=2"
+      - "-resp=:6381"
+      - "-raft=:5002"
+      - "-data=/data"
+      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+    ports:
+      - "6381:6381"
+    volumes:
+      - node2data:/data
+
+  node3:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    command:
+      - "-id=3"
+      - "-resp=:6382"
+      - "-raft=:5003"
+      - "-data=/data"
+      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+    ports:
+      - "6382:6382"
+    volumes:
+      - node3data:/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  node1data:
+  node2data:
+  node3data:
