@@ -115,7 +115,10 @@ func (rf *Raft) advanceCommitIndex() {
 			// Only entries from the current term may be committed by counting.
 			continue
 		}
-		count := 1
+		count := 0
+		if n <= rf.syncedIndex {
+			count++ // our own copy counts once it is on disk
+		}
 		for id := range rf.peers {
 			if id != rf.id && rf.matchIndex[id] >= n {
 				count++
@@ -127,6 +130,18 @@ func (rf *Raft) advanceCommitIndex() {
 			return
 		}
 	}
+}
+
+// appendToWAL writes entries and forces them to disk. The caller must hold
+// rf.mu so the log and the file stay in the same order.
+func (rf *Raft) appendToWAL(entries []wal.Entry) error {
+	if rf.wal == nil || len(entries) == 0 {
+		return nil
+	}
+	if err := rf.wal.Append(entries); err != nil {
+		return err
+	}
+	return rf.wal.Sync()
 }
 
 // HandleAppendEntries accepts a heartbeat or new entries from the leader.

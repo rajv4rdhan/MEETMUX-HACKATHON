@@ -15,13 +15,11 @@ import (
 )
 
 const (
-	heartbeatInterval  = 50 * time.Millisecond
+	tickInterval       = 10 * time.Millisecond
+	heartbeatTicks     = 5 // send a heartbeat every 5 ticks (50 ms)
 	electionTimeoutMin = 150 * time.Millisecond
 	electionTimeoutMax = 300 * time.Millisecond
 	rpcTimeout         = 100 * time.Millisecond
-
-	batchWindow = time.Millisecond
-	maxBatch    = 256
 )
 
 // state is the role a node plays at a given time.
@@ -62,6 +60,7 @@ type Raft struct {
 	// Volatile state.
 	commitIndex uint64
 	lastApplied uint64
+	syncedIndex uint64 // last index known to be on disk
 
 	// Leader state, rebuilt after every election.
 	nextIndex  map[uint32]uint64
@@ -70,9 +69,8 @@ type Raft struct {
 	state    state
 	leaderID uint32
 
-	applyCh   chan ApplyMsg
-	notifyCh  chan struct{}
-	proposeCh chan proposal
+	applyCh  chan ApplyMsg
+	notifyCh chan struct{}
 
 	// Election timer, kept as a deadline instead of a real timer so the
 	// ticker loop stays simple.
@@ -95,7 +93,6 @@ func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) 
 		log:         []LogEntry{{Term: 0, Index: 0}},
 		applyCh:     applyCh,
 		notifyCh:    make(chan struct{}, 1),
-		proposeCh:   make(chan proposal, 1024),
 		nextIndex:   make(map[uint32]uint64),
 		matchIndex:  make(map[uint32]uint64),
 		state:       follower,
@@ -110,27 +107,68 @@ func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) 
 // Start launches the background loops.
 func (rf *Raft) Start() {
 	go rf.ticker()
-	go rf.batchLoop()
 	go rf.applyLoop()
 	if rf.commitIndex > 0 {
 		rf.signalApply()
 	}
 }
 
-// ticker drives heartbeats on the leader and election timeouts elsewhere.
+// ticker syncs the log on the leader and watches for election timeouts.
 func (rf *Raft) ticker() {
+	tick := 0
 	for {
 		rf.mu.Lock()
 		isLeader := rf.state == leader
 		rf.mu.Unlock()
 
 		if isLeader {
-			rf.broadcastAppendEntries()
+			rf.syncWAL()
+			if tick%heartbeatTicks == 0 {
+				rf.broadcastAppendEntries()
+			}
 		} else if rf.electionTimedOut() {
 			rf.startElection()
 		}
-		time.Sleep(heartbeatInterval)
+		tick++
+		time.Sleep(tickInterval)
 	}
+}
+
+// Propose adds a command to the log. It returns the index and term the
+// command was assigned, and whether this node is the leader.
+func (rf *Raft) Propose(cmd []byte) (uint64, uint64, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.state != leader {
+		return 0, 0, false
+	}
+	entry := LogEntry{Term: rf.currentTerm, Index: rf.lastIndex() + 1, Data: cmd}
+	rf.log = append(rf.log, entry)
+	if err := rf.wal.Append([]wal.Entry{{Term: entry.Term, Index: entry.Index, Data: entry.Data}}); err != nil {
+		log.Printf("raft %d: wal append: %v", rf.id, err)
+	}
+	return entry.Index, entry.Term, true
+}
+
+// syncWAL forces the log file to disk and records how far this node has
+// safely stored entries. It runs outside rf.mu so writes are not blocked by
+// the fsync.
+func (rf *Raft) syncWAL() {
+	rf.mu.Lock()
+	idx := rf.lastIndex()
+	rf.mu.Unlock()
+
+	if err := rf.wal.Sync(); err != nil {
+		log.Printf("raft %d: wal sync: %v", rf.id, err)
+		return
+	}
+
+	rf.mu.Lock()
+	if idx > rf.syncedIndex {
+		rf.syncedIndex = idx
+	}
+	rf.mu.Unlock()
 }
 
 // LeaderAddr returns the raft address of the current leader, if known.
