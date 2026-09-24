@@ -11,7 +11,6 @@ import (
 type persistedState struct {
 	CurrentTerm uint64 `json:"current_term"`
 	VotedFor    uint32 `json:"voted_for"`
-	CommitIndex uint64 `json:"commit_index"`
 }
 
 // statePath is where the term and vote are stored, next to the WAL.
@@ -32,7 +31,6 @@ func (rf *Raft) recover() {
 		if err := json.Unmarshal(data, &st); err == nil {
 			rf.currentTerm = st.CurrentTerm
 			rf.votedFor = st.VotedFor
-			rf.commitIndex = st.CommitIndex
 		}
 	}
 
@@ -58,7 +56,6 @@ func (rf *Raft) persistState() {
 	data, err := json.Marshal(persistedState{
 		CurrentTerm: rf.currentTerm,
 		VotedFor:    rf.votedFor,
-		CommitIndex: rf.commitIndex,
 	})
 	if err != nil {
 		return

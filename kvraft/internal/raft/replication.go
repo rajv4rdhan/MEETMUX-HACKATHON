@@ -123,7 +123,6 @@ func (rf *Raft) advanceCommitIndex() {
 		}
 		if count > len(rf.peers)/2 {
 			rf.commitIndex = n
-			rf.persistState()
 			rf.signalApply()
 			return
 		}
@@ -187,7 +186,6 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		} else {
 			rf.commitIndex = last
 		}
-		rf.persistState()
 		rf.signalApply()
 	}
 

@@ -9,12 +9,16 @@ import (
 // waiting for that log index.
 func (n *Node) applyLoop() {
 	for msg := range n.applyCh {
-		cmd, err := Decode(msg.Data)
-		if err != nil {
-			log.Printf("node %d: dropping bad command: %v", n.cfg.ID, err)
-			continue
+		// An empty command is the no-op a new leader commits to advance the
+		// commit index; there is nothing to apply.
+		if len(msg.Data) > 0 {
+			cmd, err := Decode(msg.Data)
+			if err != nil {
+				log.Printf("node %d: dropping bad command: %v", n.cfg.ID, err)
+			} else {
+				n.applyCommand(cmd)
+			}
 		}
-		n.applyCommand(cmd)
 
 		n.mu.Lock()
 		n.lastApplied = msg.Index

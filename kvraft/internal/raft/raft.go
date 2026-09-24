@@ -242,5 +242,14 @@ func (rf *Raft) becomeLeader() {
 		rf.nextIndex[id] = next
 		rf.matchIndex[id] = 0
 	}
+
+	// Append an empty entry. Committing it also commits every entry left
+	// over from earlier terms, so the store is rebuilt after a restart.
+	entry := LogEntry{Term: rf.currentTerm, Index: rf.lastIndex() + 1}
+	rf.log = append(rf.log, entry)
+	if err := rf.appendToWAL([]wal.Entry{{Term: entry.Term, Index: entry.Index}}); err != nil {
+		log.Printf("raft %d: wal append noop: %v", rf.id, err)
+	}
+
 	log.Printf("raft %d: became leader for term %d", rf.id, rf.currentTerm)
 }

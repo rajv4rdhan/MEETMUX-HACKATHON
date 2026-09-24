@@ -65,10 +65,14 @@ func (rf *Raft) startElection() {
 			voteMu.Unlock()
 			if won {
 				rf.mu.Lock()
-				if rf.state == candidate && rf.currentTerm == term {
+				became := rf.state == candidate && rf.currentTerm == term
+				if became {
 					rf.becomeLeader()
 				}
 				rf.mu.Unlock()
+				if became {
+					go rf.broadcastAppendEntries()
+				}
 			}
 		}(id, addr)
 	}
