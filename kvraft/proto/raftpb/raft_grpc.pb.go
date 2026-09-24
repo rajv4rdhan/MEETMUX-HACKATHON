@@ -21,20 +21,16 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	Raft_RequestVote_FullMethodName   = "/raftpb.Raft/RequestVote"
 	Raft_AppendEntries_FullMethodName = "/raftpb.Raft/AppendEntries"
-	Raft_Forward_FullMethodName       = "/raftpb.Raft/Forward"
 )
 
 // RaftClient is the client API for Raft service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Raft is the only gRPC service in the cluster. Peers use it for consensus
-// (RequestVote, AppendEntries) and followers use Forward to send a client
-// command to the current leader.
+// Raft is the only gRPC service in the cluster. Peers use it for consensus.
 type RaftClient interface {
 	RequestVote(ctx context.Context, in *RequestVoteRequest, opts ...grpc.CallOption) (*RequestVoteResponse, error)
 	AppendEntries(ctx context.Context, in *AppendEntriesRequest, opts ...grpc.CallOption) (*AppendEntriesResponse, error)
-	Forward(ctx context.Context, in *ForwardRequest, opts ...grpc.CallOption) (*ForwardResponse, error)
 }
 
 type raftClient struct {
@@ -65,27 +61,14 @@ func (c *raftClient) AppendEntries(ctx context.Context, in *AppendEntriesRequest
 	return out, nil
 }
 
-func (c *raftClient) Forward(ctx context.Context, in *ForwardRequest, opts ...grpc.CallOption) (*ForwardResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ForwardResponse)
-	err := c.cc.Invoke(ctx, Raft_Forward_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
 // RaftServer is the server API for Raft service.
 // All implementations must embed UnimplementedRaftServer
 // for forward compatibility.
 //
-// Raft is the only gRPC service in the cluster. Peers use it for consensus
-// (RequestVote, AppendEntries) and followers use Forward to send a client
-// command to the current leader.
+// Raft is the only gRPC service in the cluster. Peers use it for consensus.
 type RaftServer interface {
 	RequestVote(context.Context, *RequestVoteRequest) (*RequestVoteResponse, error)
 	AppendEntries(context.Context, *AppendEntriesRequest) (*AppendEntriesResponse, error)
-	Forward(context.Context, *ForwardRequest) (*ForwardResponse, error)
 	mustEmbedUnimplementedRaftServer()
 }
 
@@ -101,9 +84,6 @@ func (UnimplementedRaftServer) RequestVote(context.Context, *RequestVoteRequest)
 }
 func (UnimplementedRaftServer) AppendEntries(context.Context, *AppendEntriesRequest) (*AppendEntriesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AppendEntries not implemented")
-}
-func (UnimplementedRaftServer) Forward(context.Context, *ForwardRequest) (*ForwardResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method Forward not implemented")
 }
 func (UnimplementedRaftServer) mustEmbedUnimplementedRaftServer() {}
 func (UnimplementedRaftServer) testEmbeddedByValue()              {}
@@ -162,24 +142,6 @@ func _Raft_AppendEntries_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Raft_Forward_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ForwardRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(RaftServer).Forward(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: Raft_Forward_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(RaftServer).Forward(ctx, req.(*ForwardRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 // Raft_ServiceDesc is the grpc.ServiceDesc for Raft service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -194,10 +156,6 @@ var Raft_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AppendEntries",
 			Handler:    _Raft_AppendEntries_Handler,
-		},
-		{
-			MethodName: "Forward",
-			Handler:    _Raft_Forward_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

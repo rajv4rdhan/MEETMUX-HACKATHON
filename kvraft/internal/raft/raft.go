@@ -78,8 +78,6 @@ type Raft struct {
 
 	connMu sync.Mutex
 	conns  map[string]raftpb.RaftClient
-
-	forwardHandler func([]byte) ([]byte, error)
 }
 
 // New creates a raft node, recovering any log and term already on disk.
@@ -161,15 +159,11 @@ func (rf *Raft) syncWAL() {
 	rf.mu.Unlock()
 }
 
-// LeaderAddr returns the raft address of the current leader, if known.
-func (rf *Raft) LeaderAddr() string {
+// LeaderID returns the id of the current leader, if known.
+func (rf *Raft) LeaderID() uint32 {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	addr, ok := rf.peers[rf.leaderID]
-	if !ok {
-		return ""
-	}
-	return addr
+	return rf.leaderID
 }
 
 // electionTimedOut reports whether the node has not heard from a leader in time.

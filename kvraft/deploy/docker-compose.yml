@@ -8,7 +8,7 @@ services:
       - "-resp=:6380"
       - "-raft=:5001"
       - "-data=/data"
-      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+      - "-peers=1=node1:5001:6380,2=node2:5002:6381,3=node3:5003:6382"
     ports:
       - "6380:6380"
     volumes:
@@ -23,7 +23,7 @@ services:
       - "-resp=:6381"
       - "-raft=:5002"
       - "-data=/data"
-      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+      - "-peers=1=node1:5001:6380,2=node2:5002:6381,3=node3:5003:6382"
     ports:
       - "6381:6381"
     volumes:
@@ -38,7 +38,7 @@ services:
       - "-resp=:6382"
       - "-raft=:5003"
       - "-data=/data"
-      - "-peers=1=node1:5001,2=node2:5002,3=node3:5003"
+      - "-peers=1=node1:5001:6380,2=node2:5002:6381,3=node3:5003:6382"
     ports:
       - "6382:6382"
     volumes:

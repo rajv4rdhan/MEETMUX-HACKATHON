@@ -345,102 +345,6 @@ func (x *AppendEntriesResponse) GetMatchIndex() uint64 {
 	return 0
 }
 
-type ForwardRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Command       []byte                 `protobuf:"bytes,1,opt,name=command,proto3" json:"command,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ForwardRequest) Reset() {
-	*x = ForwardRequest{}
-	mi := &file_raft_proto_msgTypes[5]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ForwardRequest) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ForwardRequest) ProtoMessage() {}
-
-func (x *ForwardRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[5]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ForwardRequest.ProtoReflect.Descriptor instead.
-func (*ForwardRequest) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{5}
-}
-
-func (x *ForwardRequest) GetCommand() []byte {
-	if x != nil {
-		return x.Command
-	}
-	return nil
-}
-
-type ForwardResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Result        []byte                 `protobuf:"bytes,1,opt,name=result,proto3" json:"result,omitempty"`
-	Error         string                 `protobuf:"bytes,2,opt,name=error,proto3" json:"error,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ForwardResponse) Reset() {
-	*x = ForwardResponse{}
-	mi := &file_raft_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ForwardResponse) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ForwardResponse) ProtoMessage() {}
-
-func (x *ForwardResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_raft_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ForwardResponse.ProtoReflect.Descriptor instead.
-func (*ForwardResponse) Descriptor() ([]byte, []int) {
-	return file_raft_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *ForwardResponse) GetResult() []byte {
-	if x != nil {
-		return x.Result
-	}
-	return nil
-}
-
-func (x *ForwardResponse) GetError() string {
-	if x != nil {
-		return x.Error
-	}
-	return ""
-}
-
 var File_raft_proto protoreflect.FileDescriptor
 
 const file_raft_proto_rawDesc = "" +
@@ -470,16 +374,10 @@ const file_raft_proto_rawDesc = "" +
 	"\x04term\x18\x01 \x01(\x04R\x04term\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x1f\n" +
 	"\vmatch_index\x18\x03 \x01(\x04R\n" +
-	"matchIndex\"*\n" +
-	"\x0eForwardRequest\x12\x18\n" +
-	"\acommand\x18\x01 \x01(\fR\acommand\"?\n" +
-	"\x0fForwardResponse\x12\x16\n" +
-	"\x06result\x18\x01 \x01(\fR\x06result\x12\x14\n" +
-	"\x05error\x18\x02 \x01(\tR\x05error2\xd8\x01\n" +
+	"matchIndex2\x9c\x01\n" +
 	"\x04Raft\x12F\n" +
 	"\vRequestVote\x12\x1a.raftpb.RequestVoteRequest\x1a\x1b.raftpb.RequestVoteResponse\x12L\n" +
-	"\rAppendEntries\x12\x1c.raftpb.AppendEntriesRequest\x1a\x1d.raftpb.AppendEntriesResponse\x12:\n" +
-	"\aForward\x12\x16.raftpb.ForwardRequest\x1a\x17.raftpb.ForwardResponseB\x15Z\x13kvraft/proto/raftpbb\x06proto3"
+	"\rAppendEntries\x12\x1c.raftpb.AppendEntriesRequest\x1a\x1d.raftpb.AppendEntriesResponseB\x15Z\x13kvraft/proto/raftpbb\x06proto3"
 
 var (
 	file_raft_proto_rawDescOnce sync.Once
@@ -493,26 +391,22 @@ func file_raft_proto_rawDescGZIP() []byte {
 	return file_raft_proto_rawDescData
 }
 
-var file_raft_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
+var file_raft_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_raft_proto_goTypes = []any{
 	(*LogEntry)(nil),              // 0: raftpb.LogEntry
 	(*RequestVoteRequest)(nil),    // 1: raftpb.RequestVoteRequest
 	(*RequestVoteResponse)(nil),   // 2: raftpb.RequestVoteResponse
 	(*AppendEntriesRequest)(nil),  // 3: raftpb.AppendEntriesRequest
 	(*AppendEntriesResponse)(nil), // 4: raftpb.AppendEntriesResponse
-	(*ForwardRequest)(nil),        // 5: raftpb.ForwardRequest
-	(*ForwardResponse)(nil),       // 6: raftpb.ForwardResponse
 }
 var file_raft_proto_depIdxs = []int32{
 	0, // 0: raftpb.AppendEntriesRequest.entries:type_name -> raftpb.LogEntry
 	1, // 1: raftpb.Raft.RequestVote:input_type -> raftpb.RequestVoteRequest
 	3, // 2: raftpb.Raft.AppendEntries:input_type -> raftpb.AppendEntriesRequest
-	5, // 3: raftpb.Raft.Forward:input_type -> raftpb.ForwardRequest
-	2, // 4: raftpb.Raft.RequestVote:output_type -> raftpb.RequestVoteResponse
-	4, // 5: raftpb.Raft.AppendEntries:output_type -> raftpb.AppendEntriesResponse
-	6, // 6: raftpb.Raft.Forward:output_type -> raftpb.ForwardResponse
-	4, // [4:7] is the sub-list for method output_type
-	1, // [1:4] is the sub-list for method input_type
+	2, // 3: raftpb.Raft.RequestVote:output_type -> raftpb.RequestVoteResponse
+	4, // 4: raftpb.Raft.AppendEntries:output_type -> raftpb.AppendEntriesResponse
+	3, // [3:5] is the sub-list for method output_type
+	1, // [1:3] is the sub-list for method input_type
 	1, // [1:1] is the sub-list for extension type_name
 	1, // [1:1] is the sub-list for extension extendee
 	0, // [0:1] is the sub-list for field type_name
@@ -529,7 +423,7 @@ func file_raft_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_raft_proto_rawDesc), len(file_raft_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   7,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

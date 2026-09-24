@@ -2,7 +2,9 @@
 package node
 
 import (
+	"bufio"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -12,7 +14,6 @@ import (
 	"kvraft/internal/resp"
 	"kvraft/internal/store"
 	"kvraft/internal/wal"
-	"kvraft/proto/raftpb"
 )
 
 // Node is one member of the key-value cache.
@@ -31,9 +32,11 @@ type Node struct {
 	appliedTerm  map[uint64]uint64
 	appliedCount int
 
-	// fwdConns caches gRPC clients to the leader for forwarded commands.
-	connMu   sync.Mutex
-	fwdConns map[string]raftpb.RaftClient
+	// One open connection to the leader, used to forward writes.
+	connMu       sync.Mutex
+	leaderConn   net.Conn
+	leaderReader *bufio.Reader
+	leaderAddr   string
 }
 
 // New creates a node from config and opens its write-ahead log.
@@ -52,10 +55,13 @@ func New(cfg config.Config) (*Node, error) {
 		wal:         w,
 		applyCh:     make(chan raft.ApplyMsg, 256),
 		appliedTerm: make(map[uint64]uint64),
-		fwdConns:    make(map[string]raftpb.RaftClient),
 	}
-	n.raft = raft.New(cfg.ID, cfg.Peers, w, n.applyCh)
-	n.raft.SetForwardHandler(n.runForwarded)
+
+	raftPeers := make(map[uint32]string, len(cfg.Peers))
+	for id, peer := range cfg.Peers {
+		raftPeers[id] = peer.RaftAddr
+	}
+	n.raft = raft.New(cfg.ID, raftPeers, w, n.applyCh)
 	return n, nil
 }
 

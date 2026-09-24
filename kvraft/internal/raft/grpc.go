@@ -26,11 +26,6 @@ func (s *rpcServer) AppendEntries(ctx context.Context, req *raftpb.AppendEntries
 	return s.rf.HandleAppendEntries(req), nil
 }
 
-// Forward handles a client command sent to a follower.
-func (s *rpcServer) Forward(ctx context.Context, req *raftpb.ForwardRequest) (*raftpb.ForwardResponse, error) {
-	return s.rf.handleForward(req), nil
-}
-
 // Serve runs the gRPC server on addr and blocks until it stops.
 func (rf *Raft) Serve(addr string) error {
 	ln, err := net.Listen("tcp", addr)
@@ -40,30 +35,6 @@ func (rf *Raft) Serve(addr string) error {
 	server := grpc.NewServer()
 	raftpb.RegisterRaftServer(server, &rpcServer{rf: rf})
 	return server.Serve(ln)
-}
-
-// SetForwardHandler registers the function that runs a client command on the
-// leader. The node package sets this so raft stays free of key-value logic.
-func (rf *Raft) SetForwardHandler(fn func([]byte) ([]byte, error)) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-	rf.forwardHandler = fn
-}
-
-// handleForward runs a forwarded command if this node is the leader.
-func (rf *Raft) handleForward(req *raftpb.ForwardRequest) *raftpb.ForwardResponse {
-	rf.mu.Lock()
-	handler := rf.forwardHandler
-	rf.mu.Unlock()
-
-	if handler == nil {
-		return &raftpb.ForwardResponse{Error: "no forward handler"}
-	}
-	result, err := handler(req.Command)
-	if err != nil {
-		return &raftpb.ForwardResponse{Error: err.Error()}
-	}
-	return &raftpb.ForwardResponse{Result: result}
 }
 
 // peerClient returns a cached gRPC client for a peer address.

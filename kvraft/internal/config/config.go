@@ -8,13 +8,20 @@ import (
 	"strings"
 )
 
+// Peer is one other node: where to reach its raft server and its RESP server.
+type Peer struct {
+	ID       uint32
+	RaftAddr string
+	RespAddr string
+}
+
 // Config holds everything one node needs to start.
 type Config struct {
 	ID       uint32
 	RespAddr string
 	RaftAddr string
 	DataDir  string
-	Peers    map[uint32]string
+	Peers    map[uint32]Peer
 }
 
 // Load reads the node settings from the command line.
@@ -23,7 +30,7 @@ func Load() (Config, error) {
 	respAddr := flag.String("resp", ":6380", "address for the RESP server")
 	raftAddr := flag.String("raft", ":5001", "address for the raft gRPC server")
 	dataDir := flag.String("data", "data", "directory for the write-ahead log")
-	peersFlag := flag.String("peers", "1=localhost:5001,2=localhost:5002,3=localhost:5003", "comma separated id=addr list")
+	peersFlag := flag.String("peers", "1=localhost:5001:6380,2=localhost:5002:6381,3=localhost:5003:6382", "comma separated id=host:raftport:respport list")
 	flag.Parse()
 
 	peers, err := parsePeers(*peersFlag)
@@ -40,23 +47,31 @@ func Load() (Config, error) {
 	}, nil
 }
 
-// parsePeers turns "1=host:port,2=host:port" into a map of id to address.
-func parsePeers(s string) (map[uint32]string, error) {
-	peers := make(map[uint32]string)
+// parsePeers turns "1=host:raftport:respport" into a map of id to Peer.
+func parsePeers(s string) (map[uint32]Peer, error) {
+	peers := make(map[uint32]Peer)
 	for _, part := range strings.Split(s, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
 		}
-		idStr, addr, ok := strings.Cut(part, "=")
+		idStr, rest, ok := strings.Cut(part, "=")
 		if !ok {
-			return nil, fmt.Errorf("bad peer %q, want id=addr", part)
+			return nil, fmt.Errorf("bad peer %q, want id=host:raftport:respport", part)
 		}
 		id, err := strconv.ParseUint(idStr, 10, 32)
 		if err != nil {
 			return nil, fmt.Errorf("bad peer id %q: %w", idStr, err)
 		}
-		peers[uint32(id)] = addr
+		fields := strings.Split(rest, ":")
+		if len(fields) != 3 {
+			return nil, fmt.Errorf("bad peer %q, want id=host:raftport:respport", part)
+		}
+		peers[uint32(id)] = Peer{
+			ID:       uint32(id),
+			RaftAddr: fields[0] + ":" + fields[1],
+			RespAddr: fields[0] + ":" + fields[2],
+		}
 	}
 	return peers, nil
 }

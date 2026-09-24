@@ -2,16 +2,10 @@ package node
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 	"time"
 
 	"kvraft/internal/resp"
-)
-
-var (
-	errNotLeader = errors.New("not leader")
-	errTimeout   = errors.New("timed out waiting for commit")
 )
 
 // Command is a store operation that gets replicated through raft.
@@ -39,26 +33,28 @@ func Decode(data []byte) (Command, error) {
 	return c, err
 }
 
-// apply proposes a command and waits until it is applied. If this node is not
-// the leader, the command is forwarded to the leader.
-func (n *Node) apply(cmd Command) error {
+// forwardOrPropose proposes the command when this node is the leader. When it
+// is not, it forwards the raw RESP command to the leader and returns its
+// reply. done is false only when the command committed locally, so the caller
+// can build the success reply.
+func (n *Node) forwardOrPropose(args []string, cmd Command) (resp.Reply, bool) {
 	data, err := Encode(cmd)
 	if err != nil {
-		return err
+		return resp.Error(err.Error()), true
 	}
 
 	for attempt := 0; attempt < 3; attempt++ {
 		index, term, isLeader := n.raft.Propose(data)
 		if isLeader {
 			if n.waitApplied(index, term) {
-				return nil
+				return nil, false
 			}
-		} else if err := n.forward(data); err == nil {
-			return nil
+		} else if reply, ok := n.forward(args); ok {
+			return reply, true
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return errTimeout
+	return resp.Error("not leader"), true
 }
 
 // Handle runs one client command against the store.
@@ -92,8 +88,8 @@ func (n *Node) handleSet(args []string) resp.Reply {
 	if len(args) != 3 {
 		return resp.Error("wrong number of arguments for 'set'")
 	}
-	if err := n.apply(Command{Op: OpSet, Key: args[1], Value: args[2]}); err != nil {
-		return resp.Error(err.Error())
+	if reply, done := n.forwardOrPropose(args, Command{Op: OpSet, Key: args[1], Value: args[2]}); done {
+		return reply
 	}
 	return resp.OK()
 }
@@ -103,8 +99,8 @@ func (n *Node) handleDel(args []string) resp.Reply {
 		return resp.Error("wrong number of arguments for 'del'")
 	}
 	_, existed := n.store.Get(args[1])
-	if err := n.apply(Command{Op: OpDel, Key: args[1]}); err != nil {
-		return resp.Error(err.Error())
+	if reply, done := n.forwardOrPropose(args, Command{Op: OpDel, Key: args[1]}); done {
+		return reply
 	}
 	if existed {
 		return resp.Int(1)
