@@ -10,6 +10,8 @@ import (
 	"kvraft/internal/resp"
 )
 
+const forwardTimeout = 300 * time.Millisecond
+
 func (n *Node) forward(args []string) (resp.Reply, bool) {
 	leaderID := n.raft.LeaderID()
 	if leaderID <= 0 || leaderID >= len(n.cfg.Peers) {
@@ -28,7 +30,7 @@ func (n *Node) forward(args []string) (resp.Reply, bool) {
 			n.leaderConn.Close()
 			n.leaderConn = nil
 		}
-		conn, err := net.DialTimeout("tcp", peer.RespAddr, time.Second)
+		conn, err := net.DialTimeout("tcp", peer.RespAddr, forwardTimeout)
 		if err != nil {
 			return nil, false
 		}
@@ -37,14 +39,18 @@ func (n *Node) forward(args []string) (resp.Reply, bool) {
 		n.leaderAddr = peer.RespAddr
 	}
 
-	if _, err := n.leaderConn.Write(encodeCommand(args)); err != nil {
-		n.leaderConn.Close()
+	conn := n.leaderConn
+	conn.SetDeadline(time.Now().Add(forwardTimeout))
+	defer conn.SetDeadline(time.Time{})
+
+	if _, err := conn.Write(encodeCommand(args)); err != nil {
+		conn.Close()
 		n.leaderConn = nil
 		return nil, false
 	}
 	line, err := n.leaderReader.ReadBytes('\n')
 	if err != nil {
-		n.leaderConn.Close()
+		conn.Close()
 		n.leaderConn = nil
 		return nil, false
 	}
