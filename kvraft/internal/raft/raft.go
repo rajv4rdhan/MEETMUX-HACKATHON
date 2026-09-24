@@ -41,6 +41,7 @@ type LogEntry struct {
 // ApplyMsg is sent on the apply channel after an entry is committed.
 type ApplyMsg struct {
 	Index uint64
+	Term  uint64
 	Data  []byte
 }
 
@@ -69,8 +70,7 @@ type Raft struct {
 	state    state
 	leaderID uint32
 
-	applyCh  chan ApplyMsg
-	notifyCh chan struct{}
+	applyCh chan ApplyMsg
 
 	// Election timer, kept as a deadline instead of a real timer so the
 	// ticker loop stays simple.
@@ -92,7 +92,6 @@ func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) 
 		wal:         w,
 		log:         []LogEntry{{Term: 0, Index: 0}},
 		applyCh:     applyCh,
-		notifyCh:    make(chan struct{}, 1),
 		nextIndex:   make(map[uint32]uint64),
 		matchIndex:  make(map[uint32]uint64),
 		state:       follower,
@@ -104,13 +103,9 @@ func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) 
 	return rf
 }
 
-// Start launches the background loops.
+// Start launches the background loop.
 func (rf *Raft) Start() {
 	go rf.ticker()
-	go rf.applyLoop()
-	if rf.commitIndex > 0 {
-		rf.signalApply()
-	}
 }
 
 // ticker syncs the log on the leader and watches for election timeouts.
@@ -129,6 +124,7 @@ func (rf *Raft) ticker() {
 		} else if rf.electionTimedOut() {
 			rf.startElection()
 		}
+		rf.applyCommitted()
 		tick++
 		time.Sleep(tickInterval)
 	}
@@ -214,29 +210,19 @@ func (rf *Raft) lastLogInfo() (uint64, uint64) {
 	return last.Index, last.Term
 }
 
-// signalApply wakes the apply loop without blocking.
-func (rf *Raft) signalApply() {
-	select {
-	case rf.notifyCh <- struct{}{}:
-	default:
-	}
-}
-
-// applyLoop sends committed entries to the apply channel in order.
-func (rf *Raft) applyLoop() {
-	for range rf.notifyCh {
-		for {
-			rf.mu.Lock()
-			if rf.lastApplied >= rf.commitIndex {
-				rf.mu.Unlock()
-				break
-			}
-			rf.lastApplied++
-			entry := rf.log[rf.lastApplied]
+// applyCommitted sends committed entries to the apply channel in order.
+func (rf *Raft) applyCommitted() {
+	for {
+		rf.mu.Lock()
+		if rf.lastApplied >= rf.commitIndex {
 			rf.mu.Unlock()
-
-			rf.applyCh <- ApplyMsg{Index: entry.Index, Data: entry.Data}
+			return
 		}
+		rf.lastApplied++
+		entry := rf.log[rf.lastApplied]
+		rf.mu.Unlock()
+
+		rf.applyCh <- ApplyMsg{Index: entry.Index, Term: entry.Term, Data: entry.Data}
 	}
 }
 
