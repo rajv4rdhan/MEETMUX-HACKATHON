@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// applyLoop applies committed commands to the store and wakes any client
-// waiting for that log index.
+// applyLoop applies committed commands to the store and remembers the term
+// of each applied index.
 func (n *Node) applyLoop() {
 	for msg := range n.applyCh {
 		// An empty command is the no-op a new leader commits to advance the
@@ -22,9 +22,14 @@ func (n *Node) applyLoop() {
 
 		n.mu.Lock()
 		n.lastApplied = msg.Index
-		if ch, ok := n.pending[msg.Index]; ok {
-			delete(n.pending, msg.Index)
-			close(ch)
+		n.appliedTerm[msg.Index] = msg.Term
+		n.appliedCount++
+		if n.appliedCount%1000 == 0 {
+			for index := range n.appliedTerm {
+				if index+1000 < msg.Index {
+					delete(n.appliedTerm, index)
+				}
+			}
 		}
 		n.mu.Unlock()
 	}
@@ -40,24 +45,19 @@ func (n *Node) applyCommand(cmd Command) {
 	}
 }
 
-// waitApplied blocks until the entry at index has been applied to the store.
-func (n *Node) waitApplied(index uint64) bool {
-	n.mu.Lock()
-	if n.lastApplied >= index {
-		n.mu.Unlock()
-		return true
-	}
-	ch := make(chan struct{})
-	n.pending[index] = ch
-	n.mu.Unlock()
-
-	select {
-	case <-ch:
-		return true
-	case <-time.After(2 * time.Second):
+// waitApplied waits until the entry at index has been applied. It reports
+// whether the applied entry still has the expected term, which is false if a
+// different leader overwrote it.
+func (n *Node) waitApplied(index, term uint64) bool {
+	for i := 0; i < 2000; i++ {
 		n.mu.Lock()
-		delete(n.pending, index)
+		if n.lastApplied >= index {
+			applied, ok := n.appliedTerm[index]
+			n.mu.Unlock()
+			return ok && applied == term
+		}
 		n.mu.Unlock()
-		return false
+		time.Sleep(time.Millisecond)
 	}
+	return false
 }

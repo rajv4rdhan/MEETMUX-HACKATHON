@@ -24,10 +24,12 @@ type Node struct {
 	wal     *wal.WAL
 	applyCh chan raft.ApplyMsg
 
-	// pending maps a log index to the clients waiting for it to be applied.
-	mu          sync.Mutex
-	pending     map[uint64]chan struct{}
-	lastApplied uint64
+	// appliedTerm remembers the term of recent applied indexes so a client
+	// can tell whether its write survived.
+	mu           sync.Mutex
+	lastApplied  uint64
+	appliedTerm  map[uint64]uint64
+	appliedCount int
 
 	// fwdConns caches gRPC clients to the leader for forwarded commands.
 	connMu   sync.Mutex
@@ -45,12 +47,12 @@ func New(cfg config.Config) (*Node, error) {
 	}
 
 	n := &Node{
-		cfg:      cfg,
-		store:    store.New(),
-		wal:      w,
-		applyCh:  make(chan raft.ApplyMsg, 256),
-		pending:  make(map[uint64]chan struct{}),
-		fwdConns: make(map[string]raftpb.RaftClient),
+		cfg:         cfg,
+		store:       store.New(),
+		wal:         w,
+		applyCh:     make(chan raft.ApplyMsg, 256),
+		appliedTerm: make(map[uint64]uint64),
+		fwdConns:    make(map[string]raftpb.RaftClient),
 	}
 	n.raft = raft.New(cfg.ID, cfg.Peers, w, n.applyCh)
 	n.raft.SetForwardHandler(n.runForwarded)

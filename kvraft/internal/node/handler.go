@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -13,31 +14,51 @@ var (
 	errTimeout   = errors.New("timed out waiting for commit")
 )
 
-// apply proposes a command through raft and waits until it is applied. If
-// this node is not the leader, the command is forwarded to the leader. It
-// retries a few times because the leader may change during a failover.
+// Command is a store operation that gets replicated through raft.
+type Command struct {
+	Op    string `json:"op"`
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// Operation names used in Command.Op.
+const (
+	OpSet = "set"
+	OpDel = "del"
+)
+
+// Encode turns a command into bytes for the raft log.
+func Encode(c Command) ([]byte, error) {
+	return json.Marshal(c)
+}
+
+// Decode parses bytes from the raft log back into a command.
+func Decode(data []byte) (Command, error) {
+	var c Command
+	err := json.Unmarshal(data, &c)
+	return c, err
+}
+
+// apply proposes a command and waits until it is applied. If this node is not
+// the leader, the command is forwarded to the leader.
 func (n *Node) apply(cmd Command) error {
 	data, err := Encode(cmd)
 	if err != nil {
 		return err
 	}
 
-	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
-		index, _, isLeader := n.raft.Propose(data)
+		index, term, isLeader := n.raft.Propose(data)
 		if isLeader {
-			if n.waitApplied(index) {
+			if n.waitApplied(index, term) {
 				return nil
 			}
-			lastErr = errTimeout
 		} else if err := n.forward(data); err == nil {
 			return nil
-		} else {
-			lastErr = err
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return lastErr
+	return errTimeout
 }
 
 // Handle runs one client command against the store.
@@ -81,8 +102,12 @@ func (n *Node) handleDel(args []string) resp.Reply {
 	if len(args) != 2 {
 		return resp.Error("wrong number of arguments for 'del'")
 	}
+	_, existed := n.store.Get(args[1])
 	if err := n.apply(Command{Op: OpDel, Key: args[1]}); err != nil {
 		return resp.Error(err.Error())
 	}
-	return resp.Int(1)
+	if existed {
+		return resp.Int(1)
+	}
+	return resp.Int(0)
 }

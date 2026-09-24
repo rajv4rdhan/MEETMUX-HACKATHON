@@ -70,11 +70,11 @@ func (n *Node) dropClient(addr string) {
 
 // runForwarded executes a command that a follower forwarded to this leader.
 func (n *Node) runForwarded(data []byte) ([]byte, error) {
-	index, _, isLeader := n.raft.Propose(data)
+	index, term, isLeader := n.raft.Propose(data)
 	if !isLeader {
 		return nil, errNotLeader
 	}
-	if !n.waitApplied(index) {
+	if !n.waitApplied(index, term) {
 		return nil, errTimeout
 	}
 	return []byte("OK"), nil
