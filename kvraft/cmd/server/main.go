@@ -3,11 +3,9 @@ package main
 
 import (
 	"log"
-	"os"
-	"os/signal"
-	"syscall"
 
 	"kvraft/internal/config"
+	"kvraft/internal/node"
 )
 
 func main() {
@@ -15,10 +13,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("node %d starting: resp=%s raft=%s peers=%v", cfg.ID, cfg.RespAddr, cfg.RaftAddr, cfg.Peers)
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-	<-stop
-	log.Printf("node %d shutting down", cfg.ID)
+	n := node.New(cfg)
+	if err := n.Run(); err != nil {
+		log.Fatal(err)
+	}
 }
