@@ -16,7 +16,6 @@ import (
 
 const (
 	tickInterval       = 10 * time.Millisecond
-	heartbeatTicks     = 5 // send a heartbeat every 5 ticks (50 ms)
 	electionTimeoutMin = 150 * time.Millisecond
 	electionTimeoutMax = 300 * time.Millisecond
 	rpcTimeout         = 100 * time.Millisecond
@@ -110,7 +109,6 @@ func (rf *Raft) Start() {
 
 // ticker syncs the log on the leader and watches for election timeouts.
 func (rf *Raft) ticker() {
-	tick := 0
 	for {
 		rf.mu.Lock()
 		isLeader := rf.state == leader
@@ -118,14 +116,10 @@ func (rf *Raft) ticker() {
 
 		if isLeader {
 			rf.syncWAL()
-			if tick%heartbeatTicks == 0 {
-				rf.broadcastAppendEntries()
-			}
 		} else if rf.electionTimedOut() {
 			rf.startElection()
 		}
 		rf.applyCommitted()
-		tick++
 		time.Sleep(tickInterval)
 	}
 }
@@ -253,6 +247,13 @@ func (rf *Raft) becomeLeader() {
 	rf.log = append(rf.log, entry)
 	if err := rf.appendToWAL([]wal.Entry{{Term: entry.Term, Index: entry.Index}}); err != nil {
 		log.Printf("raft %d: wal append noop: %v", rf.id, err)
+	}
+
+	for id, addr := range rf.peers {
+		if id == rf.id {
+			continue
+		}
+		go rf.peerLoop(id, addr, rf.currentTerm)
 	}
 
 	log.Printf("raft %d: became leader for term %d", rf.id, rf.currentTerm)

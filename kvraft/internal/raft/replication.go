@@ -2,7 +2,7 @@ package raft
 
 import (
 	"log"
-	"sync"
+	"time"
 
 	"kvraft/internal/wal"
 	"kvraft/proto/raftpb"
@@ -17,32 +17,8 @@ func toWALEntries(entries []LogEntry) []wal.Entry {
 	return out
 }
 
-// broadcastAppendEntries replicates the log to every peer in parallel.
-func (rf *Raft) broadcastAppendEntries() {
-	rf.mu.Lock()
-	if rf.state != leader {
-		rf.mu.Unlock()
-		return
-	}
-	term := rf.currentTerm
-	rf.mu.Unlock()
-
-	var wg sync.WaitGroup
-	for id, addr := range rf.peers {
-		if id == rf.id {
-			continue
-		}
-		wg.Add(1)
-		go func(id uint32, addr string) {
-			defer wg.Done()
-			rf.replicateTo(id, addr, term)
-		}(id, addr)
-	}
-}
-
-// replicateTo sends whatever a peer is missing, backing up one entry at a
-// time when the peer rejects the request.
-func (rf *Raft) replicateTo(id uint32, addr string, term uint64) {
+// peerLoop keeps one follower in sync with this leader until the term ends.
+func (rf *Raft) peerLoop(id uint32, addr string, term uint64) {
 	for {
 		rf.mu.Lock()
 		if rf.state != leader || rf.currentTerm != term {
@@ -77,7 +53,8 @@ func (rf *Raft) replicateTo(id uint32, addr string, term uint64) {
 
 		resp, err := rf.sendAppendEntries(addr, req)
 		if err != nil {
-			return
+			time.Sleep(tickInterval)
+			continue
 		}
 
 		rf.mu.Lock()
@@ -93,17 +70,20 @@ func (rf *Raft) replicateTo(id uint32, addr string, term uint64) {
 		}
 
 		if resp.Success {
-			rf.matchIndex[id] = req.PrevLogIndex + uint64(len(req.Entries))
-			rf.nextIndex[id] = rf.matchIndex[id] + 1
+			match := req.PrevLogIndex + uint64(len(req.Entries))
+			if match > rf.matchIndex[id] {
+				rf.matchIndex[id] = match
+			}
+			if rf.matchIndex[id]+1 > rf.nextIndex[id] {
+				rf.nextIndex[id] = rf.matchIndex[id] + 1
+			}
 			rf.advanceCommitIndex()
-			rf.mu.Unlock()
-			return
-		}
-
-		if rf.nextIndex[id] > 1 {
+		} else if rf.nextIndex[id] > 1 {
 			rf.nextIndex[id]--
 		}
 		rf.mu.Unlock()
+
+		time.Sleep(tickInterval)
 	}
 }
 
