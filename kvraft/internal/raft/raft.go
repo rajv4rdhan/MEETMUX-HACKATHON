@@ -78,7 +78,8 @@ type Raft struct {
 	state    state
 	leaderID uint32
 
-	applyCh chan ApplyMsg
+	applyCh  chan ApplyMsg
+	notifyCh chan struct{}
 
 	// Election timer, kept as a deadline instead of a real timer so the
 	// ticker loop stays simple.
@@ -98,6 +99,7 @@ func New(id uint32, peers map[uint32]string, applyCh chan ApplyMsg) *Raft {
 		peers:       peers,
 		log:         []LogEntry{{Term: 0, Index: 0}},
 		applyCh:     applyCh,
+		notifyCh:    make(chan struct{}, 1),
 		nextIndex:   make(map[uint32]uint64),
 		matchIndex:  make(map[uint32]uint64),
 		state:       follower,
@@ -111,6 +113,53 @@ func New(id uint32, peers map[uint32]string, applyCh chan ApplyMsg) *Raft {
 // Start launches the background loops.
 func (rf *Raft) Start() {
 	go rf.ticker()
+	go rf.applyLoop()
+}
+
+// Propose appends a command to the log. It returns the index and term the
+// command was assigned, and whether this node is the leader.
+func (rf *Raft) Propose(cmd []byte) (uint64, uint64, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.state != leader {
+		return 0, 0, false
+	}
+	entry := LogEntry{
+		Term:  rf.currentTerm,
+		Index: rf.lastIndex() + 1,
+		Data:  cmd,
+	}
+	rf.log = append(rf.log, entry)
+
+	go rf.broadcastAppendEntries()
+	return entry.Index, entry.Term, true
+}
+
+// signalApply wakes the apply loop without blocking.
+func (rf *Raft) signalApply() {
+	select {
+	case rf.notifyCh <- struct{}{}:
+	default:
+	}
+}
+
+// applyLoop sends committed entries to the apply channel in order.
+func (rf *Raft) applyLoop() {
+	for range rf.notifyCh {
+		for {
+			rf.mu.Lock()
+			if rf.lastApplied >= rf.commitIndex {
+				rf.mu.Unlock()
+				break
+			}
+			rf.lastApplied++
+			entry := rf.log[rf.lastApplied]
+			rf.mu.Unlock()
+
+			rf.applyCh <- ApplyMsg{Index: entry.Index, Data: entry.Data}
+		}
+	}
 }
 
 // ticker drives heartbeats on the leader and election timeouts elsewhere.
