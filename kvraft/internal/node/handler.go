@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"strings"
+	"time"
 
 	"kvraft/internal/resp"
 )
@@ -12,20 +13,31 @@ var (
 	errTimeout   = errors.New("timed out waiting for commit")
 )
 
-// apply proposes a command through raft and waits until it is applied.
+// apply proposes a command through raft and waits until it is applied. If
+// this node is not the leader, the command is forwarded to the leader. It
+// retries a few times because the leader may change during a failover.
 func (n *Node) apply(cmd Command) error {
 	data, err := Encode(cmd)
 	if err != nil {
 		return err
 	}
-	index, _, isLeader := n.raft.Propose(data)
-	if !isLeader {
-		return errNotLeader
+
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		index, _, isLeader := n.raft.Propose(data)
+		if isLeader {
+			if n.waitApplied(index) {
+				return nil
+			}
+			lastErr = errTimeout
+		} else if err := n.forward(data); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
-	if !n.waitApplied(index) {
-		return errTimeout
-	}
-	return nil
+	return lastErr
 }
 
 // Handle runs one client command against the store.
