@@ -7,13 +7,11 @@ import (
 	"path/filepath"
 )
 
-// persistedState is the part of raft state that must survive a restart.
 type persistedState struct {
 	CurrentTerm int `json:"current_term"`
 	VotedFor    int `json:"voted_for"`
 }
 
-// statePath is where the term and vote are stored, next to the WAL.
 func (rf *Raft) statePath() string {
 	if rf.wal == nil {
 		return ""
@@ -21,7 +19,6 @@ func (rf *Raft) statePath() string {
 	return filepath.Join(rf.wal.Dir(), "state.json")
 }
 
-// recover reloads the log and the saved term and vote.
 func (rf *Raft) recover() {
 	if rf.wal == nil {
 		return
@@ -49,8 +46,6 @@ func (rf *Raft) recover() {
 	rf.syncedIndex = rf.lastIndex()
 }
 
-// persistState writes the term and vote so a restart cannot double-vote.
-// The caller must hold rf.mu.
 func (rf *Raft) persistState() {
 	path := rf.statePath()
 	if path == "" {

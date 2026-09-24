@@ -7,8 +7,6 @@ import (
 	"kvraft/proto/raftpb"
 )
 
-// startElection turns this node into a candidate and asks every peer for a
-// vote in a new term.
 func (rf *Raft) startElection() {
 	rf.mu.Lock()
 	rf.state = candidate
@@ -74,7 +72,6 @@ func (rf *Raft) startElection() {
 	}
 }
 
-// HandleRequestVote decides whether to grant a vote to a candidate.
 func (rf *Raft) HandleRequestVote(req *raftpb.RequestVoteRequest) *raftpb.RequestVoteResponse {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()

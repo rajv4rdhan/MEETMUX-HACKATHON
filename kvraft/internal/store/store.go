@@ -1,4 +1,3 @@
-// Package store is a sharded in-memory key-value store.
 package store
 
 import (
@@ -13,12 +12,10 @@ type shard struct {
 	m  map[string]string
 }
 
-// Store is a key-value map split into shards to reduce lock contention.
 type Store struct {
 	shards [shardCount]*shard
 }
 
-// New returns an empty store.
 func New() *Store {
 	s := &Store{}
 	for i := range s.shards {
@@ -27,14 +24,12 @@ func New() *Store {
 	return s
 }
 
-// shardFor picks the shard that owns key.
 func (s *Store) shardFor(key string) *shard {
 	h := fnv.New32a()
 	h.Write([]byte(key))
 	return s.shards[h.Sum32()%shardCount]
 }
 
-// Get returns the value for key and whether it was present.
 func (s *Store) Get(key string) (string, bool) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
@@ -43,7 +38,6 @@ func (s *Store) Get(key string) (string, bool) {
 	return v, ok
 }
 
-// Set stores value under key.
 func (s *Store) Set(key, value string) {
 	sh := s.shardFor(key)
 	sh.mu.Lock()
@@ -51,7 +45,6 @@ func (s *Store) Set(key, value string) {
 	sh.m[key] = value
 }
 
-// Del removes key and reports whether it existed.
 func (s *Store) Del(key string) bool {
 	sh := s.shardFor(key)
 	sh.mu.Lock()

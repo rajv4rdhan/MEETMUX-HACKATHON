@@ -7,11 +7,8 @@ import (
 	"strconv"
 )
 
-// ErrProtocol marks a command that does not follow the RESP array format.
 var ErrProtocol = errors.New("protocol error")
 
-// ReadCommand reads one RESP array of bulk strings, for example
-// *2\r\n$3\r\nGET\r\n$1\r\nk\r\n, and returns the arguments.
 func ReadCommand(r *bufio.Reader) ([]string, error) {
 	line, err := readLine(r)
 	if err != nil {
@@ -36,7 +33,6 @@ func ReadCommand(r *bufio.Reader) ([]string, error) {
 	return args, nil
 }
 
-// readBulk reads one $len\r\ndata\r\n bulk string.
 func readBulk(r *bufio.Reader) (string, error) {
 	line, err := readLine(r)
 	if err != nil {
@@ -57,7 +53,6 @@ func readBulk(r *bufio.Reader) (string, error) {
 	return string(buf[:n]), nil
 }
 
-// readLine reads a CRLF terminated line and returns it without the CRLF.
 func readLine(r *bufio.Reader) ([]byte, error) {
 	line, err := r.ReadBytes('\n')
 	if err != nil {

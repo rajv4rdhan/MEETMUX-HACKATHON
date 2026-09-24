@@ -1,5 +1,3 @@
-// Command client is a small failover test client for the cluster. It keeps
-// writing keys and, when a node stops answering, moves to the next one.
 package main
 
 import (
@@ -73,7 +71,6 @@ func main() {
 	}
 }
 
-// dial connects to the next reachable node and returns it with the new index.
 func dial(addrs []string, active int) (net.Conn, *bufio.Reader, int) {
 	for i := 0; i < len(addrs); i++ {
 		conn, err := net.DialTimeout("tcp", addrs[active], time.Second)
@@ -85,7 +82,6 @@ func dial(addrs []string, active int) (net.Conn, *bufio.Reader, int) {
 	return nil, nil, active
 }
 
-// set sends one SET command and waits for the +OK reply.
 func set(conn net.Conn, reader *bufio.Reader, key, value string) error {
 	cmd := fmt.Sprintf("*3\r\n$3\r\nSET\r\n$%d\r\n%s\r\n$%d\r\n%s\r\n", len(key), key, len(value), value)
 	if _, err := conn.Write([]byte(cmd)); err != nil {

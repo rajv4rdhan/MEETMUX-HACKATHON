@@ -11,14 +11,12 @@ import (
 	"sync"
 )
 
-// Entry is one record stored in the log.
 type Entry struct {
 	Term  uint64
 	Index uint64
 	Data  []byte
 }
 
-// WAL is an append-only file of raft log entries.
 type WAL struct {
 	mu   sync.Mutex
 	path string
@@ -26,7 +24,6 @@ type WAL struct {
 	w    *bufio.Writer
 }
 
-// Open opens or creates the log file at path.
 func Open(path string) (*WAL, error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0o644)
 	if err != nil {
@@ -35,12 +32,10 @@ func Open(path string) (*WAL, error) {
 	return &WAL{path: path, f: f, w: bufio.NewWriter(f)}, nil
 }
 
-// Dir returns the directory that holds the log file.
 func (w *WAL) Dir() string {
 	return filepath.Dir(w.path)
 }
 
-// Append buffers entries for writing.
 func (w *WAL) Append(entries []Entry) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -52,7 +47,6 @@ func (w *WAL) Append(entries []Entry) error {
 	return nil
 }
 
-// Sync flushes buffered records and forces them to disk.
 func (w *WAL) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -62,8 +56,6 @@ func (w *WAL) Sync() error {
 	return w.f.Sync()
 }
 
-// ReadAll reads every valid record from the start of the file. It stops at
-// the first damaged record, because a crash can leave a half-written tail.
 func (w *WAL) ReadAll() ([]Entry, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -76,7 +68,6 @@ func (w *WAL) ReadAll() ([]Entry, error) {
 	return readRecords(w.f)
 }
 
-// Close flushes and closes the log file.
 func (w *WAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -86,7 +77,8 @@ func (w *WAL) Close() error {
 	return w.f.Close()
 }
 
-// readRecords decodes records until the file ends or a record is broken.
+// readRecords stops at the first damaged record, because a crash can leave a
+// half-written tail.
 func readRecords(r io.Reader) ([]Entry, error) {
 	br := bufio.NewReader(r)
 	var entries []Entry

@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-// applyLoop applies committed commands to the store and remembers the term
-// of each applied index.
 func (n *Node) applyLoop() {
 	for msg := range n.applyCh {
 		// An empty command is the no-op a new leader commits to advance the
@@ -35,7 +33,6 @@ func (n *Node) applyLoop() {
 	}
 }
 
-// applyCommand runs one command against the local store.
 func (n *Node) applyCommand(cmd Command) {
 	switch cmd.Op {
 	case OpSet:
@@ -45,9 +42,7 @@ func (n *Node) applyCommand(cmd Command) {
 	}
 }
 
-// waitApplied waits until the entry at index has been applied. It reports
-// whether the applied entry still has the expected term, which is false if a
-// different leader overwrote it.
+// waitApplied returns false if a different leader overwrote the entry.
 func (n *Node) waitApplied(index, term int) bool {
 	for i := 0; i < 2000; i++ {
 		n.mu.Lock()

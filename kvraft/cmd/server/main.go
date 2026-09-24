@@ -1,4 +1,3 @@
-// Command server runs one node of the key-value cache.
 package main
 
 import (

@@ -1,4 +1,3 @@
-// Package node wires the store, the raft log and the RESP server together.
 package node
 
 import (
@@ -16,7 +15,6 @@ import (
 	"kvraft/internal/wal"
 )
 
-// Node is one member of the key-value cache.
 type Node struct {
 	cfg     config.Config
 	store   *store.Store
@@ -25,21 +23,18 @@ type Node struct {
 	wal     *wal.WAL
 	applyCh chan raft.ApplyMsg
 
-	// appliedTerm remembers the term of recent applied indexes so a client
-	// can tell whether its write survived.
+	// appliedTerm lets a client check whether its write survived.
 	mu           sync.Mutex
 	lastApplied  int
 	appliedTerm  map[int]int
 	appliedCount int
 
-	// One open connection to the leader, used to forward writes.
 	connMu       sync.Mutex
 	leaderConn   net.Conn
 	leaderReader *bufio.Reader
 	leaderAddr   string
 }
 
-// New creates a node from config and opens its write-ahead log.
 func New(cfg config.Config) (*Node, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
 		return nil, err
@@ -65,7 +60,6 @@ func New(cfg config.Config) (*Node, error) {
 	return n, nil
 }
 
-// Run starts the raft and RESP servers and blocks until the RESP server stops.
 func (n *Node) Run() error {
 	go func() {
 		if err := n.raft.Serve(n.cfg.RaftAddr); err != nil {

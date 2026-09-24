@@ -1,4 +1,3 @@
-// Package resp implements a small server for the Redis serialization protocol.
 package resp
 
 import (
@@ -6,23 +5,19 @@ import (
 	"net"
 )
 
-// Handler turns a parsed command into a reply.
 type Handler interface {
 	Handle(args []string) Reply
 }
 
-// Server accepts RESP clients and dispatches their commands to a Handler.
 type Server struct {
 	addr    string
 	handler Handler
 }
 
-// NewServer creates a RESP server that listens on addr.
 func NewServer(addr string, handler Handler) *Server {
 	return &Server{addr: addr, handler: handler}
 }
 
-// ListenAndServe accepts connections until the listener fails.
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
@@ -37,7 +32,6 @@ func (s *Server) ListenAndServe() error {
 	}
 }
 
-// handleConn serves one client connection until it goes away.
 func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 	reader := bufio.NewReader(conn)

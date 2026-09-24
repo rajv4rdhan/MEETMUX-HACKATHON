@@ -10,23 +10,19 @@ import (
 	"kvraft/proto/raftpb"
 )
 
-// rpcServer adapts Raft to the generated gRPC service.
 type rpcServer struct {
 	raftpb.UnimplementedRaftServer
 	rf *Raft
 }
 
-// RequestVote handles a vote request from a candidate.
 func (s *rpcServer) RequestVote(ctx context.Context, req *raftpb.RequestVoteRequest) (*raftpb.RequestVoteResponse, error) {
 	return s.rf.HandleRequestVote(req), nil
 }
 
-// AppendEntries handles a heartbeat or log entries from the leader.
 func (s *rpcServer) AppendEntries(ctx context.Context, req *raftpb.AppendEntriesRequest) (*raftpb.AppendEntriesResponse, error) {
 	return s.rf.HandleAppendEntries(req), nil
 }
 
-// Serve runs the gRPC server on addr and blocks until it stops.
 func (rf *Raft) Serve(addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -37,7 +33,6 @@ func (rf *Raft) Serve(addr string) error {
 	return server.Serve(ln)
 }
 
-// peerClient returns a cached gRPC client for a peer address.
 func (rf *Raft) peerClient(addr string) (raftpb.RaftClient, error) {
 	rf.connMu.Lock()
 	defer rf.connMu.Unlock()
@@ -54,7 +49,6 @@ func (rf *Raft) peerClient(addr string) (raftpb.RaftClient, error) {
 	return client, nil
 }
 
-// sendRequestVote asks one peer for a vote.
 func (rf *Raft) sendRequestVote(addr string, req *raftpb.RequestVoteRequest) (*raftpb.RequestVoteResponse, error) {
 	client, err := rf.peerClient(addr)
 	if err != nil {
@@ -65,7 +59,6 @@ func (rf *Raft) sendRequestVote(addr string, req *raftpb.RequestVoteRequest) (*r
 	return client.RequestVote(ctx, req)
 }
 
-// sendAppendEntries sends a heartbeat or log entries to one peer.
 func (rf *Raft) sendAppendEntries(addr string, req *raftpb.AppendEntriesRequest) (*raftpb.AppendEntriesResponse, error) {
 	client, err := rf.peerClient(addr)
 	if err != nil {

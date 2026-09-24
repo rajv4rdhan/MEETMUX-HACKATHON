@@ -15,28 +15,24 @@ type Command struct {
 	Value string `json:"value"`
 }
 
-// Operation names used in Command.Op.
 const (
 	OpSet = "set"
 	OpDel = "del"
 )
 
-// Encode turns a command into bytes for the raft log.
 func Encode(c Command) ([]byte, error) {
 	return json.Marshal(c)
 }
 
-// Decode parses bytes from the raft log back into a command.
 func Decode(data []byte) (Command, error) {
 	var c Command
 	err := json.Unmarshal(data, &c)
 	return c, err
 }
 
-// forwardOrPropose proposes the command when this node is the leader. When it
-// is not, it forwards the raw RESP command to the leader and returns its
-// reply. done is false only when the command committed locally, so the caller
-// can build the success reply.
+// forwardOrPropose forwards to the leader when this node is not the leader.
+// done is false only when the command committed locally, so the caller can
+// build the success reply.
 func (n *Node) forwardOrPropose(args []string, cmd Command) (resp.Reply, bool) {
 	data, err := Encode(cmd)
 	if err != nil {
@@ -57,7 +53,6 @@ func (n *Node) forwardOrPropose(args []string, cmd Command) (resp.Reply, bool) {
 	return resp.Error("not leader"), true
 }
 
-// Handle runs one client command against the store.
 func (n *Node) Handle(args []string) resp.Reply {
 	switch strings.ToUpper(args[0]) {
 	case "PING":

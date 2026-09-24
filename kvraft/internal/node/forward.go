@@ -10,7 +10,6 @@ import (
 	"kvraft/internal/resp"
 )
 
-// forward sends the raw RESP command to the leader and returns its reply.
 func (n *Node) forward(args []string) (resp.Reply, bool) {
 	leaderID := n.raft.LeaderID()
 	if leaderID <= 0 || leaderID >= len(n.cfg.Peers) {
@@ -52,7 +51,6 @@ func (n *Node) forward(args []string) (resp.Reply, bool) {
 	return resp.Reply(line), true
 }
 
-// encodeCommand builds a RESP array of bulk strings from the arguments.
 func encodeCommand(args []string) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "*%d\r\n", len(args))

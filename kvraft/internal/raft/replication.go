@@ -8,7 +8,6 @@ import (
 	"kvraft/proto/raftpb"
 )
 
-// peerLoop keeps one follower in sync with this leader until the term ends.
 func (rf *Raft) peerLoop(id int, addr string, term int) {
 	for {
 		rf.mu.Lock()
@@ -78,12 +77,10 @@ func (rf *Raft) peerLoop(id int, addr string, term int) {
 	}
 }
 
-// advanceCommitIndex moves commitIndex forward once a majority has stored an
-// entry. The caller must hold rf.mu.
 func (rf *Raft) advanceCommitIndex() {
 	for n := rf.lastIndex(); n > rf.commitIndex; n-- {
 		if rf.log[n].Term != rf.currentTerm {
-			// Only entries from the current term may be committed by counting.
+			// only entries from the current term may be committed by counting
 			continue
 		}
 		count := 0
@@ -102,8 +99,6 @@ func (rf *Raft) advanceCommitIndex() {
 	}
 }
 
-// appendToWAL writes entries and forces them to disk. The caller must hold
-// rf.mu so the log and the file stay in the same order.
 func (rf *Raft) appendToWAL(entries []wal.Entry) error {
 	if rf.wal == nil || len(entries) == 0 {
 		return nil
@@ -114,7 +109,6 @@ func (rf *Raft) appendToWAL(entries []wal.Entry) error {
 	return rf.wal.Sync()
 }
 
-// HandleAppendEntries accepts a heartbeat or new entries from the leader.
 func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.AppendEntriesResponse {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -125,12 +119,10 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 	if int(req.Term) > rf.currentTerm {
 		rf.becomeFollower(int(req.Term))
 	}
-	// A valid leader exists, so restart the election countdown.
 	rf.state = follower
 	rf.leaderID = int(req.LeaderId)
 	rf.resetElectionTimer()
 
-	// The log must already contain the entry just before the new ones.
 	prevIndex := int(req.PrevLogIndex)
 	if prevIndex > rf.lastIndex() {
 		return &raftpb.AppendEntriesResponse{Term: uint64(rf.currentTerm), Success: false}
@@ -139,9 +131,8 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		return &raftpb.AppendEntriesResponse{Term: uint64(rf.currentTerm), Success: false}
 	}
 
-	// Append the new entries, dropping any conflicting suffix first. The WAL
-	// is append-only, so a conflict just adds records; replay keeps the last
-	// record for an index.
+	// The WAL is append-only, so a conflict just adds records; replay keeps
+	// the last record for an index.
 	var fresh []wal.Entry
 	for i, e := range req.Entries {
 		index := prevIndex + 1 + i
@@ -158,7 +149,6 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		log.Printf("raft %d: wal append: %v", rf.id, err)
 	}
 
-	// Followers commit everything the leader has committed.
 	if int(req.LeaderCommit) > rf.commitIndex {
 		last := rf.lastIndex()
 		if int(req.LeaderCommit) < last {
@@ -168,7 +158,7 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		}
 	}
 
-	// Only count entries that are already on disk.
+	// only count entries that are already on disk
 	return &raftpb.AppendEntriesResponse{
 		Term:       uint64(rf.currentTerm),
 		Success:    true,

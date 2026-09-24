@@ -1,4 +1,3 @@
-// Package config loads the per-node settings from command line flags.
 package config
 
 import (
@@ -15,7 +14,6 @@ type Peer struct {
 	RespAddr string
 }
 
-// Config holds everything one node needs to start.
 type Config struct {
 	ID       int
 	RespAddr string
@@ -24,7 +22,6 @@ type Config struct {
 	Peers    []Peer // indexed by id, index 0 is unused
 }
 
-// Load reads the node settings from the command line.
 func Load() (Config, error) {
 	id := flag.Int("id", 1, "node id (1-3)")
 	respAddr := flag.String("resp", ":6380", "address for the RESP server")
@@ -47,7 +44,6 @@ func Load() (Config, error) {
 	}, nil
 }
 
-// parsePeers turns "1=host:raftport:respport" into a slice indexed by id.
 func parsePeers(s string) ([]Peer, error) {
 	var parsed []Peer
 	maxID := 0

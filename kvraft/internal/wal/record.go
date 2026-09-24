@@ -14,7 +14,6 @@ import (
 const crcSize = 4
 const headerSize = 8 + 8 // term + index
 
-// encodeRecord returns the on-disk bytes for one entry.
 func encodeRecord(term, index uint64, data []byte) []byte {
 	payload := make([]byte, headerSize+len(data))
 	binary.BigEndian.PutUint64(payload[0:8], term)
