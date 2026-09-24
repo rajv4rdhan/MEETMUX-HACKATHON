@@ -16,6 +16,7 @@ func (rf *Raft) startElection() {
 	term := rf.currentTerm
 	rf.votedFor = rf.id
 	rf.resetElectionTimer()
+	rf.persistState()
 	lastIndex, lastTerm := rf.lastLogInfo()
 	rf.mu.Unlock()
 
@@ -93,6 +94,7 @@ func (rf *Raft) HandleRequestVote(req *raftpb.RequestVoteRequest) *raftpb.Reques
 	if (rf.votedFor == 0 || rf.votedFor == req.CandidateId) && upToDate {
 		rf.votedFor = req.CandidateId
 		rf.resetElectionTimer()
+		rf.persistState()
 		granted = true
 	}
 

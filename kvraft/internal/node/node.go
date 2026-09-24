@@ -1,13 +1,17 @@
+// Package node wires the store, the raft log and the RESP server together.
 package node
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 
 	"kvraft/internal/config"
 	"kvraft/internal/raft"
 	"kvraft/internal/resp"
 	"kvraft/internal/store"
+	"kvraft/internal/wal"
 )
 
 // Node is one member of the key-value cache.
@@ -16,6 +20,7 @@ type Node struct {
 	store   *store.Store
 	server  *resp.Server
 	raft    *raft.Raft
+	wal     *wal.WAL
 	applyCh chan raft.ApplyMsg
 
 	// pending maps a log index to the clients waiting for it to be applied.
@@ -24,16 +29,25 @@ type Node struct {
 	lastApplied uint64
 }
 
-// New creates a node from config.
-func New(cfg config.Config) *Node {
+// New creates a node from config and opens its write-ahead log.
+func New(cfg config.Config) (*Node, error) {
+	if err := os.MkdirAll(cfg.DataDir, 0o755); err != nil {
+		return nil, err
+	}
+	w, err := wal.Open(filepath.Join(cfg.DataDir, "raft.wal"))
+	if err != nil {
+		return nil, err
+	}
+
 	n := &Node{
 		cfg:     cfg,
 		store:   store.New(),
+		wal:     w,
 		applyCh: make(chan raft.ApplyMsg, 256),
 		pending: make(map[uint64]chan struct{}),
 	}
-	n.raft = raft.New(cfg.ID, cfg.Peers, n.applyCh)
-	return n
+	n.raft = raft.New(cfg.ID, cfg.Peers, w, n.applyCh)
+	return n, nil
 }
 
 // Run starts the raft and RESP servers and blocks until the RESP server stops.

@@ -14,7 +14,10 @@ func main() {
 		log.Fatal(err)
 	}
 
-	n := node.New(cfg)
+	n, err := node.New(cfg)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if err := n.Run(); err != nil {
 		log.Fatal(err)
 	}

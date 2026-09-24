@@ -1,0 +1,69 @@
+package raft
+
+import (
+	"encoding/json"
+	"log"
+	"os"
+	"path/filepath"
+)
+
+// persistedState is the part of raft state that must survive a restart.
+type persistedState struct {
+	CurrentTerm uint64 `json:"current_term"`
+	VotedFor    uint32 `json:"voted_for"`
+	CommitIndex uint64 `json:"commit_index"`
+}
+
+// statePath is where the term and vote are stored, next to the WAL.
+func (rf *Raft) statePath() string {
+	if rf.wal == nil {
+		return ""
+	}
+	return filepath.Join(rf.wal.Dir(), "state.json")
+}
+
+// recover reloads the log and the saved term and vote.
+func (rf *Raft) recover() {
+	if rf.wal == nil {
+		return
+	}
+	if data, err := os.ReadFile(rf.statePath()); err == nil {
+		var st persistedState
+		if err := json.Unmarshal(data, &st); err == nil {
+			rf.currentTerm = st.CurrentTerm
+			rf.votedFor = st.VotedFor
+			rf.commitIndex = st.CommitIndex
+		}
+	}
+
+	entries, err := rf.wal.ReadAll()
+	if err != nil {
+		log.Printf("raft %d: reading wal: %v", rf.id, err)
+	}
+	for _, e := range entries {
+		rf.log = append(rf.log, LogEntry{Term: e.Term, Index: e.Index, Data: e.Data})
+	}
+	if rf.commitIndex > rf.lastIndex() {
+		rf.commitIndex = rf.lastIndex()
+	}
+}
+
+// persistState writes the term and vote so a restart cannot double-vote.
+// The caller must hold rf.mu.
+func (rf *Raft) persistState() {
+	path := rf.statePath()
+	if path == "" {
+		return
+	}
+	data, err := json.Marshal(persistedState{
+		CurrentTerm: rf.currentTerm,
+		VotedFor:    rf.votedFor,
+		CommitIndex: rf.commitIndex,
+	})
+	if err != nil {
+		return
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		log.Printf("raft %d: saving state: %v", rf.id, err)
+	}
+}

@@ -1,10 +1,21 @@
 package raft
 
 import (
+	"log"
 	"sync"
 
+	"kvraft/internal/wal"
 	"kvraft/proto/raftpb"
 )
+
+// toWALEntries converts raft log entries for storage.
+func toWALEntries(entries []LogEntry) []wal.Entry {
+	out := make([]wal.Entry, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, wal.Entry{Term: e.Term, Index: e.Index, Data: e.Data})
+	}
+	return out
+}
 
 // broadcastAppendEntries replicates the log to every peer in parallel.
 func (rf *Raft) broadcastAppendEntries() {
@@ -112,6 +123,7 @@ func (rf *Raft) advanceCommitIndex() {
 		}
 		if count > len(rf.peers)/2 {
 			rf.commitIndex = n
+			rf.persistState()
 			rf.signalApply()
 			return
 		}
@@ -143,6 +155,8 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 	}
 
 	// Append the new entries, dropping any conflicting suffix first.
+	truncated := false
+	var fresh []wal.Entry
 	for i, e := range req.Entries {
 		index := req.PrevLogIndex + 1 + uint64(i)
 		if index <= rf.lastIndex() {
@@ -150,8 +164,19 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 				continue
 			}
 			rf.log = rf.log[:index]
+			truncated = true
 		}
 		rf.log = append(rf.log, LogEntry{Term: e.Term, Index: index, Data: e.Data})
+		fresh = append(fresh, wal.Entry{Term: e.Term, Index: index, Data: e.Data})
+	}
+
+	if truncated {
+		// The file is append-only, so a shorter log must be rewritten.
+		if err := rf.wal.Rewrite(toWALEntries(rf.log[1:])); err != nil {
+			log.Printf("raft %d: wal rewrite: %v", rf.id, err)
+		}
+	} else if err := rf.appendToWAL(fresh); err != nil {
+		log.Printf("raft %d: wal append: %v", rf.id, err)
 	}
 
 	// Followers commit everything the leader has committed.
@@ -162,6 +187,7 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 		} else {
 			rf.commitIndex = last
 		}
+		rf.persistState()
 		rf.signalApply()
 	}
 

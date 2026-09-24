@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"kvraft/internal/wal"
 	"kvraft/proto/raftpb"
 )
 
@@ -18,6 +19,9 @@ const (
 	electionTimeoutMin = 150 * time.Millisecond
 	electionTimeoutMax = 300 * time.Millisecond
 	rpcTimeout         = 100 * time.Millisecond
+
+	batchWindow = time.Millisecond
+	maxBatch    = 256
 )
 
 // state is the role a node plays at a given time.
@@ -61,6 +65,7 @@ type Raft struct {
 
 	id    uint32
 	peers map[uint32]string
+	wal   *wal.WAL
 
 	// Persistent state.
 	currentTerm uint64
@@ -78,8 +83,9 @@ type Raft struct {
 	state    state
 	leaderID uint32
 
-	applyCh  chan ApplyMsg
-	notifyCh chan struct{}
+	applyCh   chan ApplyMsg
+	notifyCh  chan struct{}
+	proposeCh chan proposal
 
 	// Election timer, kept as a deadline instead of a real timer so the
 	// ticker loop stays simple.
@@ -92,14 +98,17 @@ type Raft struct {
 	forwardHandler func([]byte) ([]byte, error)
 }
 
-// New creates a raft node. Committed entries are sent on applyCh in order.
-func New(id uint32, peers map[uint32]string, applyCh chan ApplyMsg) *Raft {
+// New creates a raft node, recovering any log and term already on disk.
+// Committed entries are sent on applyCh in order.
+func New(id uint32, peers map[uint32]string, w *wal.WAL, applyCh chan ApplyMsg) *Raft {
 	rf := &Raft{
 		id:          id,
 		peers:       peers,
+		wal:         w,
 		log:         []LogEntry{{Term: 0, Index: 0}},
 		applyCh:     applyCh,
 		notifyCh:    make(chan struct{}, 1),
+		proposeCh:   make(chan proposal, 1024),
 		nextIndex:   make(map[uint32]uint64),
 		matchIndex:  make(map[uint32]uint64),
 		state:       follower,
@@ -107,58 +116,17 @@ func New(id uint32, peers map[uint32]string, applyCh chan ApplyMsg) *Raft {
 		conns:       make(map[string]raftpb.RaftClient),
 	}
 	rf.electionTimeout = randomElectionTimeout()
+	rf.recover()
 	return rf
 }
 
 // Start launches the background loops.
 func (rf *Raft) Start() {
 	go rf.ticker()
+	go rf.batchLoop()
 	go rf.applyLoop()
-}
-
-// Propose appends a command to the log. It returns the index and term the
-// command was assigned, and whether this node is the leader.
-func (rf *Raft) Propose(cmd []byte) (uint64, uint64, bool) {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
-	if rf.state != leader {
-		return 0, 0, false
-	}
-	entry := LogEntry{
-		Term:  rf.currentTerm,
-		Index: rf.lastIndex() + 1,
-		Data:  cmd,
-	}
-	rf.log = append(rf.log, entry)
-
-	go rf.broadcastAppendEntries()
-	return entry.Index, entry.Term, true
-}
-
-// signalApply wakes the apply loop without blocking.
-func (rf *Raft) signalApply() {
-	select {
-	case rf.notifyCh <- struct{}{}:
-	default:
-	}
-}
-
-// applyLoop sends committed entries to the apply channel in order.
-func (rf *Raft) applyLoop() {
-	for range rf.notifyCh {
-		for {
-			rf.mu.Lock()
-			if rf.lastApplied >= rf.commitIndex {
-				rf.mu.Unlock()
-				break
-			}
-			rf.lastApplied++
-			entry := rf.log[rf.lastApplied]
-			rf.mu.Unlock()
-
-			rf.applyCh <- ApplyMsg{Index: entry.Index, Data: entry.Data}
-		}
+	if rf.commitIndex > 0 {
+		rf.signalApply()
 	}
 }
 
@@ -228,6 +196,32 @@ func (rf *Raft) lastLogInfo() (uint64, uint64) {
 	return last.Index, last.Term
 }
 
+// signalApply wakes the apply loop without blocking.
+func (rf *Raft) signalApply() {
+	select {
+	case rf.notifyCh <- struct{}{}:
+	default:
+	}
+}
+
+// applyLoop sends committed entries to the apply channel in order.
+func (rf *Raft) applyLoop() {
+	for range rf.notifyCh {
+		for {
+			rf.mu.Lock()
+			if rf.lastApplied >= rf.commitIndex {
+				rf.mu.Unlock()
+				break
+			}
+			rf.lastApplied++
+			entry := rf.log[rf.lastApplied]
+			rf.mu.Unlock()
+
+			rf.applyCh <- ApplyMsg{Index: entry.Index, Data: entry.Data}
+		}
+	}
+}
+
 // becomeFollower steps down to follower at the given term. The caller must
 // hold rf.mu.
 func (rf *Raft) becomeFollower(term uint64) {
@@ -235,6 +229,7 @@ func (rf *Raft) becomeFollower(term uint64) {
 	rf.currentTerm = term
 	rf.votedFor = 0
 	rf.resetElectionTimer()
+	rf.persistState()
 }
 
 // becomeLeader promotes a candidate that won the election. The caller must
