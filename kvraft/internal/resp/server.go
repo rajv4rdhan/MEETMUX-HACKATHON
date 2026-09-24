@@ -3,7 +3,6 @@ package resp
 
 import (
 	"bufio"
-	"errors"
 	"net"
 )
 
@@ -16,7 +15,6 @@ type Handler interface {
 type Server struct {
 	addr    string
 	handler Handler
-	ln      net.Listener
 }
 
 // NewServer creates a RESP server that listens on addr.
@@ -24,31 +22,19 @@ func NewServer(addr string, handler Handler) *Server {
 	return &Server{addr: addr, handler: handler}
 }
 
-// ListenAndServe accepts connections until the listener is closed.
+// ListenAndServe accepts connections until the listener fails.
 func (s *Server) ListenAndServe() error {
 	ln, err := net.Listen("tcp", s.addr)
 	if err != nil {
 		return err
 	}
-	s.ln = ln
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return nil
-			}
 			return err
 		}
 		go s.handleConn(conn)
 	}
-}
-
-// Close stops the listener and unblocks ListenAndServe.
-func (s *Server) Close() error {
-	if s.ln != nil {
-		return s.ln.Close()
-	}
-	return nil
 }
 
 // handleConn serves one client connection until it goes away.
