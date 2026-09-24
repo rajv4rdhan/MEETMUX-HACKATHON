@@ -68,12 +68,19 @@ func (rf *Raft) peerLoop(id int, addr string, term int) {
 				rf.nextIndex[id] = rf.matchIndex[id] + 1
 			}
 			rf.advanceCommitIndex()
+			rf.mu.Unlock()
+			time.Sleep(tickInterval)
+			continue
+		}
+
+		// Back up. A follower whose log is shorter sends its last index, so
+		// we can jump straight to it instead of stepping back one at a time.
+		if hint := int(resp.MatchIndex); hint > 0 && hint < rf.nextIndex[id] {
+			rf.nextIndex[id] = hint + 1
 		} else if rf.nextIndex[id] > 1 {
 			rf.nextIndex[id]--
 		}
 		rf.mu.Unlock()
-
-		time.Sleep(tickInterval)
 	}
 }
 
@@ -125,7 +132,11 @@ func (rf *Raft) HandleAppendEntries(req *raftpb.AppendEntriesRequest) *raftpb.Ap
 
 	prevIndex := int(req.PrevLogIndex)
 	if prevIndex > rf.lastIndex() {
-		return &raftpb.AppendEntriesResponse{Term: uint64(rf.currentTerm), Success: false}
+		return &raftpb.AppendEntriesResponse{
+			Term:       uint64(rf.currentTerm),
+			Success:    false,
+			MatchIndex: uint64(rf.lastIndex()),
+		}
 	}
 	if rf.log[prevIndex].Term != int(req.PrevLogTerm) {
 		return &raftpb.AppendEntriesResponse{Term: uint64(rf.currentTerm), Success: false}
